@@ -97,9 +97,10 @@ const newCod = () => {
   const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', v = crypto.getRandomValues(new Uint8Array(6));
   return [...v].map(x => a[x % a.length]).join('');
 };
-async function labRpc(fn, args, b) {
+async function labRpc(fn, args, b, apply) {
   const { error } = await sb.rpc(fn, args);
   if (error) { alert(error.message); if (/Código/.test(error.message)) dropCod(b, day); }
+  else if (apply) { apply(); render(); }
   load();
 }
 
@@ -185,7 +186,7 @@ $('#day').onclick = e => {
     bid = bb; ed = id; $('#dt').textContent = 'Corregir reserva';
     $('#lab').value = r.laboratorio; $('#prod').value = r.producto || ''; $('#dlg').showModal();
   }
-  if (k === 'c' && confirm('¿Cancelar tu reserva?')) labRpc('lab_del_reserva', { c: miCod(bb, day), i: id }, bb);
+  if (k === 'c' && confirm('¿Cancelar tu reserva?')) labRpc('lab_del_reserva', { c: miCod(bb, day), i: id }, bb, () => { R = R.filter(z => z.id !== id); });
   if (k === 'k') {
     const c = (prompt('Código de tu reserva') || '').trim().toUpperCase();
     if (c) { saveCod(bb, day, c); render(); }
@@ -198,9 +199,13 @@ $('#fm').onsubmit = async e => {
   e.preventDefault();
   const lab = $('#lab').value.trim(), prod = $('#prod').value.trim() || null;
   if (ed) {
+    const eid = ed; ed = null;
     $('#dlg').close();
-    await labRpc('lab_edit_reserva', { c: miCod(bid, day), i: ed, l: lab, pr: prod }, bid);
-    ed = null; return;
+    await labRpc('lab_edit_reserva', { c: miCod(bid, day), i: eid, l: lab, pr: prod }, bid, () => {
+      const r = R.find(z => z.id === eid);
+      if (r) { r.laboratorio = lab; r.producto = prod; }
+    });
+    return;
   }
   const c = newCod();
   const { error } = await sb.rpc('apartar', { b: bid, f: day, l: lab, pr: prod, c });
@@ -208,6 +213,8 @@ $('#fm').onsubmit = async e => {
   if (error) alert(error.code === '23505' ? 'Ese bloque ya fue apartado por otro laboratorio.' : 'Error: ' + error.message);
   else {
     saveCod(bid, day, c);
+    R.push({ id: -1, bloque_id: bid, fecha: day, laboratorio: lab, producto: prod });
+    render();
     try { localStorage.setItem('lab', lab); } catch { }
     alert('Reservado. Tu código para corregir o cancelar: ' + c + '\nGuárdalo.');
   }
@@ -255,7 +262,17 @@ $('#pdf1').onclick = () => pdf(false);
 $('#pdfA').onclick = () => pdf(true);
 
 load();
-sb.channel('reservas-live').on('postgres_changes', { event: '*', schema: 'public', table: 'reservas' }, load).subscribe();
+
+let t, poll;
+const reload = () => { clearTimeout(t); t = setTimeout(load, 300); };
+sb.channel('calendario-live')
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'reservas' }, reload)
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'bloques' }, reload)
+  .subscribe(s => {
+    clearInterval(poll);
+    if (s !== 'SUBSCRIBED') poll = setInterval(load, 15000);  // respaldo si el realtime no conecta
+  });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 </script>
 </body>
 </html>
