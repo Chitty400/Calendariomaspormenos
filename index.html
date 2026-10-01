@@ -57,7 +57,7 @@ dialog input{width:100%;margin:6px 0}
 
 <dialog id="dlg">
   <form id="fm">
-    <h3 style="margin:0">Apartar bloque</h3>
+    <h3 id="dt" style="margin:0">Apartar bloque</h3>
     <input id="lab" placeholder="Laboratorio" required minlength="2" maxlength="80">
     <input id="prod" placeholder="Producto" maxlength="120">
     <div class="row"><button class="p">Apartar</button><button type="button" id="cx">Cancelar</button></div>
@@ -86,6 +86,22 @@ let y = new Date().getFullYear(), m = new Date().getMonth();
 
 const bl = f => B.filter(b => b.farmacia_id == f);
 const rs = (b, d) => R.find(r => r.bloque_id == b && r.fecha == d);
+
+let ed = null;
+const CK = 'cods';
+const cods = () => { try { return JSON.parse(localStorage.getItem(CK) || '{}'); } catch { return {}; } };
+const saveCod = (b, d, c) => { try { const o = cods(); o[b + '|' + d] = c; localStorage.setItem(CK, JSON.stringify(o)); } catch { } };
+const dropCod = (b, d) => { try { const o = cods(); delete o[b + '|' + d]; localStorage.setItem(CK, JSON.stringify(o)); } catch { } };
+const miCod = (b, d) => cods()[b + '|' + d];
+const newCod = () => {
+  const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', v = crypto.getRandomValues(new Uint8Array(6));
+  return [...v].map(x => a[x % a.length]).join('');
+};
+async function labRpc(fn, args, b) {
+  const { error } = await sb.rpc(fn, args);
+  if (error) { alert(error.message); if (/Código/.test(error.message)) dropCod(b, day); }
+  load();
+}
 
 async function load() {
   const ini = iso(y, m, 1), fin = m === 11 ? iso(y + 1, 0, 1) : iso(y, m + 1, 1);
@@ -131,7 +147,7 @@ function renderDay() {
       return `<div class="blk ${r ? 't' : ''}">
         <div><b>${hh(b.hora_inicio)} – ${hh(b.hora_fin)}</b><br>${r ? esc(r.laboratorio) + (r.producto ? ' · ' + esc(r.producto) : '') : 'Libre'}</div>
         <div class="row">
-          ${r ? (pin ? `<button data-x="r${r.id}">Liberar</button>` : '') : (past ? '' : `<button class="p" data-x="a${b.id}">Apartar</button>`)}
+          ${r ? (pin ? `<button data-x="r${r.id}">Liberar</button>` : miCod(b.id, day) ? `<button data-x="e${r.id}|${b.id}">Corregir</button><button data-x="c${r.id}|${b.id}">Cancelar</button>` : `<button data-x="k${r.id}|${b.id}">Tengo código</button>`) : (past ? '' : `<button class="p" data-x="a${b.id}">Apartar</button>`)}
           ${pin ? `<button data-x="b${b.id}">Quitar bloque</button>` : ''}
         </div></div>`;
     }).join('') : '<p>Esta farmacia no tiene bloques.</p>') +
@@ -158,11 +174,21 @@ $('#day').onclick = e => {
     admin('admin_add_bloque', { f: fid, i, e: f }); return;
   }
   const x = e.target.dataset.x; if (!x) return;
-  const k = x[0], id = +x.slice(1);
+  const k = x[0], [id, bb] = x.slice(1).split('|').map(Number);
   if (k === 'a') {
-    bid = id;
+    bid = id; ed = null; $('#dt').textContent = 'Apartar bloque';
     try { $('#lab').value = localStorage.getItem('lab') || ''; } catch { }
     $('#prod').value = ''; $('#dlg').showModal();
+  }
+  if (k === 'e') {
+    const r = R.find(z => z.id === id);
+    bid = bb; ed = id; $('#dt').textContent = 'Corregir reserva';
+    $('#lab').value = r.laboratorio; $('#prod').value = r.producto || ''; $('#dlg').showModal();
+  }
+  if (k === 'c' && confirm('¿Cancelar tu reserva?')) labRpc('lab_del_reserva', { c: miCod(bb, day), i: id }, bb);
+  if (k === 'k') {
+    const c = (prompt('Código de tu reserva') || '').trim().toUpperCase();
+    if (c) { saveCod(bb, day, c); render(); }
   }
   if (k === 'r' && confirm('¿Liberar este bloque?')) admin('admin_del_reserva', { i: id });
   if (k === 'b' && confirm('¿Quitar este bloque y sus reservas?')) admin('admin_del_bloque', { i: id });
@@ -170,13 +196,24 @@ $('#day').onclick = e => {
 
 $('#fm').onsubmit = async e => {
   e.preventDefault();
-  const lab = $('#lab').value.trim();
-  const { error } = await sb.from('reservas').insert({ bloque_id: bid, fecha: day, laboratorio: lab, producto: $('#prod').value.trim() || null });
+  const lab = $('#lab').value.trim(), prod = $('#prod').value.trim() || null;
+  if (ed) {
+    $('#dlg').close();
+    await labRpc('lab_edit_reserva', { c: miCod(bid, day), i: ed, l: lab, pr: prod }, bid);
+    ed = null; return;
+  }
+  const c = newCod();
+  const { error } = await sb.rpc('apartar', { b: bid, f: day, l: lab, pr: prod, c });
+  $('#dlg').close();
   if (error) alert(error.code === '23505' ? 'Ese bloque ya fue apartado por otro laboratorio.' : 'Error: ' + error.message);
-  else { try { localStorage.setItem('lab', lab); } catch { } }
-  $('#dlg').close(); load();
+  else {
+    saveCod(bid, day, c);
+    try { localStorage.setItem('lab', lab); } catch { }
+    alert('Reservado. Tu código para corregir o cancelar: ' + c + '\nGuárdalo.');
+  }
+  load();
 };
-$('#cx').onclick = () => $('#dlg').close();
+$('#cx').onclick = () => { ed = null; $('#dlg').close(); };
 
 $('#fs').onchange = e => { fid = +e.target.value; day = null; render(); };
 $('#prev').onclick = () => { m--; if (m < 0) { m = 11; y--; } day = null; load(); };
