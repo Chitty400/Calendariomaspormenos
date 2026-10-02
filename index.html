@@ -49,6 +49,13 @@ dialog input{width:100%;margin:6px 0}
 .dd li:hover,.dd li:focus{background:var(--warn);outline:0}
 .dd li[aria-selected=true]{background:var(--r);color:#fff;font-weight:600}
 .dd li:focus-visible{outline:2px solid var(--rd);outline-offset:-2px}
+#mb{width:340px;text-align:center}
+#mb h3{margin:0 0 6px;color:var(--rd)}
+#mb p{margin:0 0 12px;white-space:pre-line}
+#mb p:empty,#mc:empty{display:none}
+#mb input{text-align:center;margin:0 0 12px}
+#mb .row{justify-content:center}
+#mc{font:700 28px/1 ui-monospace,monospace;letter-spacing:.2em;background:var(--warn);border:1px dashed var(--r);border-radius:10px;padding:14px;margin:0 0 12px;color:var(--rd);user-select:all}
 @media (prefers-reduced-motion:reduce){.dd>button::after{transition:none}}
 </style>
 </head>
@@ -88,6 +95,16 @@ dialog input{width:100%;margin:6px 0}
   </form>
 </dialog>
 
+<dialog id="mb">
+  <form id="mf">
+    <h3 id="mt"></h3>
+    <p id="mm"></p>
+    <div id="mc"></div>
+    <input id="mi" autocomplete="off" hidden>
+    <div class="row"><button class="p" id="mok">Aceptar</button><button type="button" id="mno">Cancelar</button></div>
+  </form>
+</dialog>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -108,6 +125,26 @@ const ts = n => pad(Math.floor(n / 60)) + ':' + pad(n % 60);
 const h12 = t => { const n = typeof t === 'number' ? t : mins(t), h = Math.floor(n / 60) % 24; return `${h % 12 || 12}:${pad(n % 60)} ${h < 12 ? 'AM' : 'PM'}`; };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const hoy = () => { const t = new Date(); return iso(t.getFullYear(), t.getMonth(), t.getDate()); };
+
+// Ventanas emergentes propias (reemplazan alert, confirm y prompt)
+function msg({ title = '', text = '', code = '', input = '', ok = 'Aceptar', cancel = false }) {
+  return new Promise(res => {
+    const d = $('#mb'), i = $('#mi');
+    $('#mt').textContent = title; $('#mm').textContent = text; $('#mc').textContent = code;
+    i.hidden = !input; i.value = ''; i.type = input === 'password' ? 'password' : 'text';
+    $('#mok').textContent = ok; $('#mno').hidden = !cancel;
+    const done = v => { d.oncancel = null; $('#mf').onsubmit = null; $('#mno').onclick = null; if (d.open) d.close(); res(v); };
+    $('#mf').onsubmit = e => { e.preventDefault(); done(input ? i.value : true); };
+    $('#mno').onclick = () => done(input ? null : false);
+    d.oncancel = e => { e.preventDefault(); done(input || cancel ? (input ? null : false) : true); };
+    d.showModal(); (input ? i : $('#mok')).focus();
+  });
+}
+const ui = {
+  alert: (text, title = 'Aviso', code = '') => msg({ title, text, code }),
+  confirm: (text, title = '¿Confirmar?', ok = 'Aceptar') => msg({ title, text, ok, cancel: true }),
+  prompt: (title, kind = 'text') => msg({ title, input: kind, cancel: true })
+};
 
 // Menú desplegable propio: dd(contenedor, [{v, t}], valorActual, alCambiar, etiqueta)
 function dd(host, opts, val, cb, label) {
@@ -190,7 +227,7 @@ async function load() {
     sb.from('farmacias').select('*').order('id'),
     sb.from('reservas').select('*').gte('fecha', ini).lt('fecha', fin)
   ]);
-  if (a.error || c.error) { alert('No se pudo conectar con la base de datos. Revisa SB_URL y SB_KEY.'); return; }
+  if (a.error || c.error) { ui.alert('Revisa SB_URL y SB_KEY.', 'No se pudo conectar con la base de datos'); return; }
   F = a.data; R = c.data;
   if (!fid) fid = F[0]?.id;
   render();
@@ -262,13 +299,13 @@ function renderDay() {
 
 async function admin(fn, args) {
   const { error } = await sb.rpc(fn, { p: pin, ...args });
-  if (error) { alert(error.message); if (/PIN/.test(error.message)) pin = null; }
+  if (error) { ui.alert(error.message, 'No se pudo completar'); if (/PIN/.test(error.message)) pin = null; }
   load();
 }
 
 async function labRpc(fn, args, k, apply) {
   const { error } = await sb.rpc(fn, args);
-  if (error) { alert(error.message); if (/Código/.test(error.message)) dropCod(k); }
+  if (error) { ui.alert(error.message, 'No se pudo completar'); if (/Código/.test(error.message)) dropCod(k); }
   else if (apply) { apply(); render(); }
   load();
 }
@@ -294,7 +331,7 @@ $('#month').onclick = e => {
   day = c.dataset.d; render();
 };
 
-$('#day').onclick = e => {
+$('#day').onclick = async e => {
   if (e.target.id === 'back') { day = null; render(); return; }
   const x = e.target.dataset.x; if (!x) return;
   const k = x[0], id = +x.slice(1), r = R.find(z => z.id === id);
@@ -303,18 +340,18 @@ $('#day').onclick = e => {
     ed = id; $('#dt').textContent = 'Corregir reserva'; $('#hr').hidden = true;
     $('#lab').value = r.laboratorio; $('#prod').value = r.producto || ''; $('#dlg').showModal();
   }
-  if (k === 'c' && confirm('¿Cancelar tu reserva?')) labRpc('lab_del_reserva', { c: miCod(kr(r)), i: id }, kr(r), () => { R = R.filter(z => z.id !== id); });
+  if (k === 'c' && await ui.confirm('Se liberará ese horario.', '¿Cancelar tu reserva?', 'Sí, cancelar')) labRpc('lab_del_reserva', { c: miCod(kr(r)), i: id }, kr(r), () => { R = R.filter(z => z.id !== id); });
   if (k === 'k') {
-    const c = (prompt('Código de tu reserva') || '').trim().toUpperCase();
+    const c = ((await ui.prompt('Código de tu reserva')) || '').trim().toUpperCase();
     if (c) { saveCod(kr(r), c); render(); }
   }
-  if (k === 'r' && confirm('¿Liberar este horario?')) admin('admin_del_reserva', { i: id });
+  if (k === 'r' && await ui.confirm('La reserva se borrará del calendario.', '¿Liberar este horario?', 'Sí, liberar')) admin('admin_del_reserva', { i: id });
 };
 
 $('#cfg').onclick = e => {
   if (e.target.id !== 'cg') return;
   const ab = $('#ca').dataset.v, ci = $('#cc').dataset.v;
-  if (ci <= ab) { alert('La hora de cierre debe ser después de la de apertura.'); return; }
+  if (ci <= ab) { ui.alert('La hora de cierre debe ser después de la de apertura.', 'Horario inválido'); return; }
   admin('admin_set_horario', { fa: fid, ab, ci, st: +$('#cp').dataset.v });
 };
 
@@ -330,13 +367,13 @@ $('#fm').onsubmit = async e => {
   const i = $('#t1').dataset.v, f2 = $('#t2').dataset.v, c = newCod();
   const { error } = await sb.rpc('apartar', { fa: fid, d: day, i, e: f2, l: lab, pr: prod, c });
   $('#dlg').close();
-  if (error) alert(error.message);
+  if (error) ui.alert(error.message, 'No se pudo apartar');
   else {
     saveCod(key(fid, day, i), c);
     R.push({ id: -1, farmacia_id: fid, fecha: day, hora_inicio: i, hora_fin: f2, laboratorio: lab, producto: prod });
     render();
     try { localStorage.setItem('lab', lab); } catch { }
-    alert(`Reservado ${h12(i)} – ${h12(f2)}. Tu código para corregir o cancelar: ${c}\nGuárdalo.`);
+    ui.alert(`Reservado de ${h12(i)} a ${h12(f2)}.\nEste es tu código para corregir o cancelar. Guárdalo.`, '¡Reservado!', c);
   }
   load();
 };
@@ -347,10 +384,10 @@ $('#next').onclick = () => { m++; if (m > 11) { m = 0; y++; } day = null; load()
 
 $('#adm').onclick = async () => {
   if (pin) { pin = null; render(); return; }
-  const p = prompt('PIN de administrador');
+  const p = await ui.prompt('PIN de administrador', 'password');
   if (!p) return;
   const { data } = await sb.rpc('admin_ok', { p });
-  if (data === true) { pin = p; render(); } else alert('PIN incorrecto.');
+  if (data === true) { pin = p; render(); } else ui.alert('Intenta de nuevo.', 'PIN incorrecto');
 };
 
 function pdf(all) {
