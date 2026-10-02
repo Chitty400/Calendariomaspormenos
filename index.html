@@ -42,6 +42,7 @@ main{max-width:900px;margin:0 auto;padding:16px}
 .day.off{opacity:.45;cursor:default}.day.nil{border:0;background:none;cursor:default}
 .ubi{margin-top:16px;padding:10px 12px;border:1px solid var(--ln);border-radius:8px}
 .ubi textarea{display:block;width:100%;font:inherit;padding:8px 10px;margin:6px 0;border-radius:8px;border:1px solid var(--ln);resize:vertical}
+#ubg{display:block;margin-left:auto}
 .ubi span{white-space:pre-line}.ubi .vacio{color:#888}
 .blk{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff;border:1px solid var(--ln);border-left:5px solid var(--okt);border-radius:8px;padding:10px;margin:6px 0}
 .blk.t{border-left-color:var(--r)}
@@ -72,6 +73,11 @@ dialog input{width:100%;margin:6px 0}
 #mb input{text-align:center;margin:0 0 12px}
 #mb .row{justify-content:center}
 #mc{font:700 28px/1 ui-monospace,monospace;letter-spacing:.2em;background:var(--warn);border:1px dashed var(--r);border-radius:10px;padding:14px;margin:0 0 12px;color:var(--rd);user-select:all}
+#pp{width:520px;max-width:92vw}
+#pp h3{margin:0 0 4px;color:var(--rd)}
+#pp .n{margin:0 0 10px;font-size:13px;color:#666}
+#pl{max-height:55vh;overflow:auto}
+#pl p{text-align:center;color:#666}
 #sn{position:fixed;left:50%;bottom:20px;z-index:50;max-width:90vw;transform:translate(-50%,20px);opacity:0;pointer-events:none;background:#2b2b2b;color:#fff;padding:10px 18px;border-radius:10px;border-left:5px solid var(--okt);box-shadow:0 8px 24px rgba(0,0,0,.3);transition:opacity .2s,transform .2s}
 #sn.on{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion:reduce){.dd>button::after,#sn{transition:none}}
@@ -123,6 +129,13 @@ dialog input{width:100%;margin:6px 0}
     <div class="row"><button type="button" id="mcp" hidden>Copiar código</button><button type="button" id="mwa" hidden>Enviar por WhatsApp</button></div>
     <div class="row" style="margin-top:8px"><button class="p" id="mok">Aceptar</button><button type="button" id="mno">Cancelar</button></div>
   </form>
+</dialog>
+
+<dialog id="pp">
+  <h3>Papelera</h3>
+  <p class="n">Lo que se borra se guarda 90 días y luego se elimina definitivamente.</p>
+  <div id="pl"></div>
+  <div class="row" style="margin-top:12px;justify-content:space-between"><button class="d" id="pv">Vaciar papelera</button><button id="px">Cerrar</button></div>
 </dialog>
 
 <div id="sn" role="status" aria-live="polite"></div>
@@ -300,7 +313,7 @@ function renderCfg() {
     <div class="row" style="margin-top:6px">Abre <div id="ca"></div> Cierra <div id="cc"></div> Reservas cada <div id="cp"></div>
     <button class="p" id="cg">Guardar horario</button></div>
     <div class="row" style="margin-top:10px">
-    <button class="p" id="cad">Agregar farmacia</button><button class="d" id="cdel">Eliminar esta farmacia</button></div>`;
+    <button class="p" id="cad">Agregar farmacia</button><button class="d" id="cdel">Eliminar esta farmacia</button><button id="cpa">Papelera</button></div>`;
   const T = Array.from({ length: 48 }, (_, n) => ({ v: ts(n * 30), t: h12(n * 30) }));
   dd($('#ca'), T, hh(f.hora_apertura), null, 'Hora de apertura');
   dd($('#cc'), T, hh(f.hora_cierre), null, 'Hora de cierre');
@@ -412,10 +425,11 @@ $('#day').onclick = async e => {
     const c = ((await ui.prompt('Código de tu reserva')) || '').trim().toUpperCase();
     if (c) { saveCod(kr(r), c); render(); }
   }
-  if (k === 'r' && await ui.confirm('La reserva se borrará del calendario.', '¿Liberar este horario?', 'Sí, liberar')) admin('admin_del_reserva', { i: id }, 'Horario liberado', () => { R = R.filter(z => z.id !== id); });
+  if (k === 'r' && await ui.confirm('La reserva saldrá del calendario y quedará 90 días en la papelera.', '¿Liberar este horario?', 'Sí, liberar')) admin('admin_del_reserva', { i: id }, 'Horario liberado', () => { R = R.filter(z => z.id !== id); });
 };
 
 $('#cfg').onclick = async e => {
+  if (e.target.id === 'cpa') { abrePapelera(); return; }
   if (e.target.id === 'cnb') {
     const n = $('#cn').value.trim();
     if (n.length < 2) { ui.alert('El nombre debe tener al menos 2 caracteres.', 'Nombre inválido'); return; }
@@ -431,7 +445,7 @@ $('#cfg').onclick = async e => {
   }
   if (e.target.id === 'cdel') {
     if (F.length < 2) { ui.alert('Debe quedar al menos una farmacia.', 'No se puede eliminar'); return; }
-    if (await ui.confirm(`Se borrará "${fa().nombre}" con todas sus reservas. No se puede deshacer.`, '¿Eliminar farmacia?', 'Sí, eliminar')) {
+    if (await ui.confirm(`Se borrará "${fa().nombre}" con todas sus reservas. Podrás restaurarla desde la papelera durante 90 días.`, '¿Eliminar farmacia?', 'Sí, eliminar')) {
       await admin('admin_del_farmacia', { fa: fid }, 'Farmacia eliminada');
     }
     return;
@@ -485,6 +499,39 @@ $('#adm').onclick = async () => {
   else if (error) ui.alert(error.message, 'Acceso bloqueado');
   else ui.alert('Intenta de nuevo.', 'PIN incorrecto');
 };
+
+// Papelera (solo admin): lo borrado se conserva 90 días y luego se destruye solo
+async function abrePapelera() {
+  const { data, error } = await sb.rpc('admin_papelera', { p: pin });
+  if (error) { ui.alert(error.message, 'No se pudo abrir la papelera'); if (/PIN/.test(error.message)) { pin = null; render(); } return; }
+  pintaPapelera(data);
+  if (!$('#pp').open) $('#pp').showModal();
+}
+function pintaPapelera(items) {
+  const quedan = t => Math.max(0, 90 - Math.floor((Date.now() - new Date(t)) / 864e5));
+  $('#pl').innerHTML = items.length ? items.map(t => {
+    const d = t.datos, esF = t.tipo === 'farmacia', n = quedan(t.borrado_en);
+    const titulo = esF ? `Farmacia: ${d.nombre}` : d.laboratorio + (d.producto ? ' · ' + d.producto : '');
+    const detalle = esF
+      ? `${t.n_reservas} reserva${t.n_reservas === 1 ? '' : 's'}`
+      : `${t.farmacia || 'Farmacia eliminada'} · ${fechaTxt(d.fecha)} · ${h12(d.hora_inicio)} – ${h12(d.hora_fin)}`;
+    return `<div class="blk t"><div><b>${esc(titulo)}</b><br>${esc(detalle)}<br><small>Borrado el ${new Date(t.borrado_en).toLocaleDateString('es')} por ${t.por === 'admin' ? 'el admin' : 'el laboratorio'} · se elimina en ${n} día${n === 1 ? '' : 's'}</small></div><button data-r="${t.id}">Restaurar</button></div>`;
+  }).join('') : '<p>La papelera está vacía.</p>';
+  $('#pv').disabled = !items.length;
+}
+$('#pl').onclick = async e => {
+  const id = e.target.dataset.r; if (!id) return;
+  const { error } = await sb.rpc('admin_restaurar', { p: pin, i: +id });
+  if (error) { ui.alert(error.message, 'No se pudo restaurar'); return; }
+  snack('Restaurado'); load(); abrePapelera();
+};
+$('#pv').onclick = async () => {
+  if (!await ui.confirm('Se borrará todo lo que hay en la papelera. No se puede deshacer.', '¿Vaciar la papelera?', 'Sí, vaciar')) return;
+  const { error } = await sb.rpc('admin_vaciar_papelera', { p: pin });
+  if (error) { ui.alert(error.message, 'No se pudo vaciar'); return; }
+  snack('Papelera vaciada'); abrePapelera();
+};
+$('#px').onclick = () => $('#pp').close();
 
 // Las librerías del PDF se descargan solo la primera vez que se pide un PDF
 const loadJs = src => new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
