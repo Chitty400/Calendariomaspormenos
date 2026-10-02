@@ -13,6 +13,7 @@ h1{font-size:18px;margin:0}
 button,input{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--ln)}
 button{cursor:pointer;background:#fff;color:var(--r);border-color:var(--r);font-weight:600}
 button.p{background:var(--r);color:#fff}
+button.d{background:var(--rd);color:#fff;border-color:var(--rd)}
 header button{border-color:#fff}
 button:focus-visible,input:focus-visible{outline:3px solid var(--rd);outline-offset:2px}
 main{max-width:900px;margin:0 auto;padding:16px}
@@ -240,7 +241,7 @@ async function load() {
   ]);
   if (a.error || c.error) { ui.alert('Revisa SB_URL y SB_KEY.', 'No se pudo conectar con la base de datos'); return; }
   F = a.data; R = c.data;
-  if (!fid) fid = F[0]?.id;
+  if (!F.some(f => f.id == fid)) { fid = F[0]?.id; day = null; }
   render();
 }
 
@@ -267,7 +268,9 @@ function renderCfg() {
   el.innerHTML = `<div class="row"><b>Nombre</b><input id="cn" value="${esc(f.nombre)}" maxlength="60" aria-label="Nombre de la farmacia" style="flex:1;min-width:160px"><button class="p" id="cnb">Guardar nombre</button></div>
     <b style="display:block;margin-top:10px">Horario</b>
     <div class="row" style="margin-top:6px">Abre <div id="ca"></div> Cierra <div id="cc"></div> Reservas cada <div id="cp"></div>
-    <button class="p" id="cg">Guardar horario</button></div>`;
+    <button class="p" id="cg">Guardar horario</button></div>
+    <div class="row" style="margin-top:10px"><input id="cnew" placeholder="Nombre de la nueva farmacia" maxlength="60" aria-label="Nombre de la nueva farmacia" style="flex:1;min-width:160px">
+    <button class="p" id="cad">Agregar farmacia</button><button class="d" id="cdel">Eliminar esta farmacia</button></div>`;
   const T = Array.from({ length: 48 }, (_, n) => ({ v: ts(n * 30), t: h12(n * 30) }));
   dd($('#ca'), T, hh(f.hora_apertura), null, 'Hora de apertura');
   dd($('#cc'), T, hh(f.hora_cierre), null, 'Hora de cierre');
@@ -310,10 +313,11 @@ function renderDay() {
 }
 
 async function admin(fn, args, ok) {
-  const { error } = await sb.rpc(fn, { p: pin, ...args });
+  const { data, error } = await sb.rpc(fn, { p: pin, ...args });
   if (error) { ui.alert(error.message, 'No se pudo completar'); if (/PIN/.test(error.message)) pin = null; }
   else if (ok) snack(ok);
-  load();
+  await load();
+  return error ? null : data;
 }
 
 async function labRpc(fn, args, k, apply, ok) {
@@ -361,11 +365,25 @@ $('#day').onclick = async e => {
   if (k === 'r' && await ui.confirm('La reserva se borrará del calendario.', '¿Liberar este horario?', 'Sí, liberar')) admin('admin_del_reserva', { i: id }, 'Horario liberado');
 };
 
-$('#cfg').onclick = e => {
+$('#cfg').onclick = async e => {
   if (e.target.id === 'cnb') {
     const n = $('#cn').value.trim();
     if (n.length < 2) { ui.alert('El nombre debe tener al menos 2 caracteres.', 'Nombre inválido'); return; }
     admin('admin_set_nombre', { fa: fid, n }, 'Nombre guardado'); return;
+  }
+  if (e.target.id === 'cad') {
+    const n = $('#cnew').value.trim();
+    if (n.length < 2) { ui.alert('El nombre debe tener al menos 2 caracteres.', 'Nombre inválido'); return; }
+    const id = await admin('admin_add_farmacia', { n }, 'Farmacia agregada');
+    if (id) { fid = id; day = null; render(); }
+    return;
+  }
+  if (e.target.id === 'cdel') {
+    if (F.length < 2) { ui.alert('Debe quedar al menos una farmacia.', 'No se puede eliminar'); return; }
+    if (await ui.confirm(`Se borrará "${fa().nombre}" con todas sus reservas. No se puede deshacer.`, '¿Eliminar farmacia?', 'Sí, eliminar')) {
+      await admin('admin_del_farmacia', { fa: fid }, 'Farmacia eliminada');
+    }
+    return;
   }
   if (e.target.id !== 'cg') return;
   const ab = $('#ca').dataset.v, ci = $('#cc').dataset.v;
