@@ -467,6 +467,24 @@ $('#pdfA').onclick = () => pdf(true);
 
 load();
 
+// Actualización automática de la página: si el archivo publicado cambió, se recarga sola
+let lastChk = 0;
+async function checkVersion() {
+  if (Date.now() - lastChk < 60000) return;
+  lastChk = Date.now();
+  try {
+    const r = await fetch(location.pathname, { cache: 'reload' });
+    if (!r.ok) return;
+    const tx = await r.text();
+    let h = 5381; for (let i = 0; i < tx.length; i++) h = ((h * 33) ^ tx.charCodeAt(i)) >>> 0;
+    const old = localStorage.getItem('ver');
+    if (old && old !== String(h)) {
+      if (document.querySelector('dialog[open]')) return; // no interrumpir si hay una ventana abierta
+      localStorage.setItem('ver', h); location.reload();
+    } else localStorage.setItem('ver', h);
+  } catch { }
+}
+
 let t;
 const reload = () => { clearTimeout(t); t = setTimeout(() => load(true), 300); };
 sb.channel('calendario-live')
@@ -475,11 +493,12 @@ sb.channel('calendario-live')
   .subscribe();
 // Respaldo para celulares: recargar cada 30 s mientras la página está visible,
 // y al volver a la pestaña, recuperar internet o salir del modo de espera
-setInterval(() => { if (!document.hidden) reload(); }, 30000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) reload(); });
+setInterval(() => { if (!document.hidden) { reload(); checkVersion(); } }, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { reload(); checkVersion(); } });
 addEventListener('focus', reload);
 addEventListener('online', reload);
 addEventListener('pageshow', e => { if (e.persisted) reload(); });
+checkVersion();
 </script>
 </body>
 </html>
