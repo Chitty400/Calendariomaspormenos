@@ -233,12 +233,15 @@ const newCod = () => {
   return [...v].map(x => a[x % a.length]).join('');
 };
 
+let loadSeq = 0;
 async function load(quiet) {
+  const seq = ++loadSeq; // si salen varias cargas a la vez, solo vale la más reciente
   const ini = iso(y, m, 1), fin = m === 11 ? iso(y + 1, 0, 1) : iso(y, m + 1, 1);
   const [a, c] = await Promise.all([
     sb.from('farmacias').select('*').order('id'),
     sb.from('reservas').select('*').gte('fecha', ini).lt('fecha', fin)
   ]);
+  if (seq !== loadSeq) return;
   if (a.error || c.error) { if (!quiet) ui.alert('Revisa SB_URL y SB_KEY.', 'No se pudo conectar con la base de datos'); return; }
   F = a.data; R = c.data;
   if (!F.some(f => f.id == fid)) { fid = F[0]?.id; day = null; }
@@ -312,10 +315,10 @@ function renderDay() {
     }).join('');
 }
 
-async function admin(fn, args, ok) {
+async function admin(fn, args, ok, apply) {
   const { data, error } = await sb.rpc(fn, { p: pin, ...args });
   if (error) { ui.alert(error.message, 'No se pudo completar'); if (/PIN/.test(error.message)) pin = null; }
-  else if (ok) snack(ok);
+  else { if (apply) { apply(); render(); } if (ok) snack(ok); }
   await load();
   return error ? null : data;
 }
@@ -362,7 +365,7 @@ $('#day').onclick = async e => {
     const c = ((await ui.prompt('Código de tu reserva')) || '').trim().toUpperCase();
     if (c) { saveCod(kr(r), c); render(); }
   }
-  if (k === 'r' && await ui.confirm('La reserva se borrará del calendario.', '¿Liberar este horario?', 'Sí, liberar')) admin('admin_del_reserva', { i: id }, 'Horario liberado');
+  if (k === 'r' && await ui.confirm('La reserva se borrará del calendario.', '¿Liberar este horario?', 'Sí, liberar')) admin('admin_del_reserva', { i: id }, 'Horario liberado', () => { R = R.filter(z => z.id !== id); });
 };
 
 $('#cfg').onclick = async e => {
