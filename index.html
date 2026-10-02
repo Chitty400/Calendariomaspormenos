@@ -44,6 +44,7 @@ main{max-width:900px;margin:0 auto;padding:16px}
 .day.free{background:var(--ok)}.day.some{background:var(--warn)}.day.full{background:var(--full)}
 .day.sel{outline:3px solid var(--rd);outline-offset:-2px}
 .day.off{opacity:.45;cursor:default}.day.nil{border:0;background:none;cursor:default}
+#day{margin-top:20px}
 .ubi{margin-top:16px;padding:10px 12px;border:1px solid var(--ln);border-radius:8px}
 .ubi textarea{display:block;width:100%;font:inherit;padding:8px 10px;margin:6px 0;border-radius:8px;border:1px solid var(--ln);resize:vertical}
 #ubg{display:block;margin-left:auto}
@@ -379,7 +380,7 @@ function renderMonth() {
 function renderDay() {
   const el = $('#day'), past = day < hoy(), st = fa().paso_min;
   el.hidden = false;
-  el.innerHTML = `<div class="bar"><button id="back">← Volver al mes</button><b>${day.split('-').reverse().join('/')}</b></div>` +
+  el.innerHTML = `<div class="bar"><button id="back">← Atrás</button><b>${day.split('-').reverse().join('/')}</b></div>` +
     segs(day).map((s, i) => {
       if (s.r) {
         const r = s.r;
