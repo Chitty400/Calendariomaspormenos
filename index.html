@@ -488,9 +488,9 @@ async function checkVersion() {
 let t;
 const reload = () => { clearTimeout(t); t = setTimeout(() => load(true), 300); };
 sb.channel('calendario-live')
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'reservas' }, reload)
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'farmacias' }, reload)
-  .subscribe();
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'reservas' }, p => { console.log('evento', p); reload(); })
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'farmacias' }, p => { console.log('evento', p); reload(); })
+  .subscribe((status, err) => console.log('realtime:', status, err));
 // Respaldo para celulares: recargar cada 30 s mientras la página está visible,
 // y al volver a la pestaña, recuperar internet o salir del modo de espera
 setInterval(() => { if (!document.hidden) { reload(); checkVersion(); } }, 30000);
