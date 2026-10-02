@@ -73,6 +73,7 @@ dialog input{width:100%;margin:6px 0}
 #mb input{text-align:center;margin:0 0 12px}
 #mb .row{justify-content:center}
 #mc{font:700 28px/1 ui-monospace,monospace;letter-spacing:.2em;background:var(--warn);border:1px dashed var(--r);border-radius:10px;padding:14px;margin:0 0 12px;color:var(--rd);user-select:all}
+#cpa{margin-left:auto}
 #pp{width:520px;max-width:92vw}
 #pp h3{margin:0 0 4px;color:var(--rd)}
 #pp .n{margin:0 0 10px;font-size:13px;color:#666}
@@ -359,7 +360,7 @@ function renderDay() {
       if (s.r) {
         const r = s.r;
         return `<div class="blk t"><div><b>${h12(s.a)} – ${h12(s.b)}</b><br>${esc(r.laboratorio)}${r.producto ? ' · ' + esc(r.producto) : ''}</div>
-          <div class="row">${pin ? `<button data-x="r${r.id}">Liberar</button>` : miCod(kr(r))
+          <div class="row">${pin ? `<button data-x="e${r.id}">Corregir</button><button data-x="r${r.id}">Borrar</button>` : miCod(kr(r))
             ? `<button data-x="v${r.id}">Ver código</button><button data-x="e${r.id}">Corregir</button><button data-x="c${r.id}">Cancelar</button>`
             : `<button data-x="k${r.id}">Tengo código</button>`}</div></div>`;
       }
@@ -425,7 +426,7 @@ $('#day').onclick = async e => {
     const c = ((await ui.prompt('Código de tu reserva')) || '').trim().toUpperCase();
     if (c) { saveCod(kr(r), c); render(); }
   }
-  if (k === 'r' && await ui.confirm('La reserva saldrá del calendario y quedará 90 días en la papelera.', '¿Liberar este horario?', 'Sí, liberar')) admin('admin_del_reserva', { i: id }, 'Horario liberado', () => { R = R.filter(z => z.id !== id); });
+  if (k === 'r' && await ui.confirm('La reserva saldrá del calendario y quedará 90 días en la papelera.', '¿Borrar esta reserva?', 'Sí, borrar')) admin('admin_del_reserva', { i: id }, 'Reserva borrada', () => { R = R.filter(z => z.id !== id); });
 };
 
 $('#cfg').onclick = async e => {
@@ -462,14 +463,16 @@ $('#fm').onsubmit = async e => {
   if (ed) {
     const id = ed, r = R.find(z => z.id === id), ni = $('#t1').dataset.v, nf = $('#t2').dataset.v; ed = null;
     $('#dlg').close();
-    const k0 = kr(r), cod = miCod(k0);
-    if (ni === hh(r.hora_inicio) && nf === hh(r.hora_fin))
-      await labRpc('lab_edit_reserva', { c: cod, i: id, l: lab, pr: prod }, k0, () => { r.laboratorio = lab; r.producto = prod; }, 'Reserva corregida');
-    else
-      await labRpc('lab_edit_horario', { c: cod, i: id, ini: ni, fin: nf, l: lab, pr: prod }, k0, () => {
-        r.laboratorio = lab; r.producto = prod; r.hora_inicio = ni + ':00'; r.hora_fin = nf + ':00';
-        saveCod(kr(r), cod); if (kr(r) !== k0) dropCod(k0); // el código va ligado a la hora de inicio
-      }, 'Reserva corregida');
+    const k0 = kr(r), cod = miCod(k0), same = ni === hh(r.hora_inicio) && nf === hh(r.hora_fin);
+    const apply = () => {
+      r.laboratorio = lab; r.producto = prod;
+      if (same) return;
+      r.hora_inicio = ni + ':00'; r.hora_fin = nf + ':00';
+      const k1 = kr(r); if (cod && k1 !== k0) { saveCod(k1, cod); dropCod(k0); } // el código va ligado a la hora de inicio
+    };
+    const args = same ? { i: id, l: lab, pr: prod } : { i: id, ini: ni, fin: nf, l: lab, pr: prod };
+    if (pin) await admin(same ? 'admin_edit_reserva' : 'admin_edit_horario', args, 'Reserva corregida', apply);
+    else await labRpc(same ? 'lab_edit_reserva' : 'lab_edit_horario', { c: cod, ...args }, k0, apply, 'Reserva corregida');
     return;
   }
   const i = $('#t1').dataset.v, f2 = $('#t2').dataset.v, c = newCod();
