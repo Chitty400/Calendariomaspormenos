@@ -341,7 +341,7 @@ async function labRpc(fn, args, k, apply, ok) {
 
 // Apartar: el usuario elige "Desde" y "Hasta" solo dentro del hueco libre
 function openApartar(g) {
-  gap = g; ed = null; $('#dt').textContent = 'Apartar horario'; $('#hr').hidden = false;
+  gap = g; ed = null; $('#dt').textContent = 'Apartar horario'; $('#hr').style.display = '';
   const st = fa().paso_min, o = [];
   for (let n = Math.ceil(g.a / st) * st; n + st <= g.b; n += st) o.push({ v: ts(n), t: h12(n) });
   dd($('#t1'), o, o[0] && o[0].v, fillHasta, 'Desde'); fillHasta();
@@ -367,7 +367,14 @@ $('#day').onclick = async e => {
   if (k === 'a') openApartar(segs(day)[id]);
   if (k === 'v' && r) ui.alert('Guárdalo para poder corregir o cancelar desde otro celular o navegador.', 'Tu código de reserva', miCod(kr(r)));
   if (k === 'e') {
-    ed = id; $('#dt').textContent = 'Corregir reserva'; $('#hr').hidden = true;
+    if (!r) return;
+    const rr = R.filter(z => z.farmacia_id == fid && z.fecha == day).sort((a, b) => mins(a.hora_inicio) - mins(b.hora_inicio));
+    const ix = rr.findIndex(z => z.id === id), f = fa(), st = f.paso_min, o = [];
+    gap = { a: ix > 0 ? mins(rr[ix - 1].hora_fin) : mins(f.hora_apertura), b: ix < rr.length - 1 ? mins(rr[ix + 1].hora_inicio) : mins(f.hora_cierre) };
+    ed = id; $('#dt').textContent = 'Corregir reserva'; $('#hr').style.display = '';
+    for (let n = Math.ceil(gap.a / st) * st; n + st <= gap.b; n += st) o.push({ v: ts(n), t: h12(n) });
+    dd($('#t1'), o, hh(r.hora_inicio), fillHasta, 'Desde'); fillHasta();
+    setDD($('#t2'), hh(r.hora_fin), false);
     $('#lab').value = r.laboratorio; $('#prod').value = r.producto || ''; $('#dlg').showModal();
   }
   if (k === 'c' && await ui.confirm('Se liberará ese horario.', '¿Cancelar tu reserva?', 'Sí, cancelar')) labRpc('lab_del_reserva', { c: miCod(kr(r)), i: id }, kr(r), () => { R = R.filter(z => z.id !== id); }, 'Reserva cancelada');
@@ -408,9 +415,16 @@ $('#fm').onsubmit = async e => {
   e.preventDefault();
   const lab = $('#lab').value.trim(), prod = $('#prod').value.trim() || null;
   if (ed) {
-    const id = ed, r = R.find(z => z.id === id); ed = null;
+    const id = ed, r = R.find(z => z.id === id), ni = $('#t1').dataset.v, nf = $('#t2').dataset.v; ed = null;
     $('#dlg').close();
-    await labRpc('lab_edit_reserva', { c: miCod(kr(r)), i: id, l: lab, pr: prod }, kr(r), () => { r.laboratorio = lab; r.producto = prod; }, 'Reserva corregida');
+    const k0 = kr(r), cod = miCod(k0);
+    if (ni === hh(r.hora_inicio) && nf === hh(r.hora_fin))
+      await labRpc('lab_edit_reserva', { c: cod, i: id, l: lab, pr: prod }, k0, () => { r.laboratorio = lab; r.producto = prod; }, 'Reserva corregida');
+    else
+      await labRpc('lab_edit_horario', { c: cod, i: id, ini: ni, fin: nf, l: lab, pr: prod }, k0, () => {
+        r.laboratorio = lab; r.producto = prod; r.hora_inicio = ni + ':00'; r.hora_fin = nf + ':00';
+        saveCod(kr(r), cod); if (kr(r) !== k0) dropCod(k0); // el código va ligado a la hora de inicio
+      }, 'Reserva corregida');
     return;
   }
   const i = $('#t1').dataset.v, f2 = $('#t2').dataset.v, c = newCod();
