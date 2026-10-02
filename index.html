@@ -40,6 +40,9 @@ main{max-width:900px;margin:0 auto;padding:16px}
 .day.free{background:var(--ok)}.day.some{background:var(--warn)}.day.full{background:var(--full)}
 .day.sel{outline:3px solid var(--rd);outline-offset:-2px}
 .day.off{opacity:.45;cursor:default}.day.nil{border:0;background:none;cursor:default}
+.ubi{margin-top:16px;padding:10px 12px;border:1px solid var(--ln);border-radius:8px}
+.ubi textarea{display:block;width:100%;font:inherit;padding:8px 10px;margin:6px 0;border-radius:8px;border:1px solid var(--ln);resize:vertical}
+.ubi span{white-space:pre-line}.ubi .vacio{color:#888}
 .blk{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff;border:1px solid var(--ln);border-left:5px solid var(--okt);border-radius:8px;padding:10px;margin:6px 0}
 .blk.t{border-left-color:var(--r)}
 .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -91,6 +94,7 @@ dialog input{width:100%;margin:6px 0}
   </div>
   <div id="month" class="grid"></div>
   <div id="day" hidden></div>
+  <div id="ubi" class="ubi"></div>
   <div class="row" id="pdfrow" style="margin-top:16px;display:none">
     <button class="p" id="pdf1">Descargar PDF de esta farmacia</button>
     <button id="pdfA">Descargar PDF de todas</button>
@@ -279,6 +283,7 @@ function render() {
   $('#adm').textContent = pin ? 'Salir de admin' : 'Admin';
   $('#pdfrow').style.display = pin ? '' : 'none';
   renderCfg();
+  renderUbi();
   renderMonth();
   if (day) renderDay(); else $('#day').hidden = true;
 }
@@ -301,6 +306,20 @@ function renderCfg() {
   dd($('#cc'), T, hh(f.hora_cierre), null, 'Hora de cierre');
   dd($('#cp'), [15, 30, 60].map(p => ({ v: p, t: p + ' min' })), f.paso_min, null, 'Duración mínima de reserva');
 }
+
+// Ubicación de la farmacia: la ve todo el mundo, solo el admin la edita
+function renderUbi() {
+  const el = $('#ubi'), f = fa(); if (!f) return;
+  const u = f.ubicacion || '', sg = [f.id, u, !!pin].join('|');
+  if (el.dataset.sg === sg) return; // no pisar lo que el admin está escribiendo
+  el.dataset.sg = sg;
+  el.innerHTML = pin
+    ? `<b>Ubicación:</b><textarea id="ubin" rows="2" maxlength="300" aria-label="Ubicación de la farmacia" placeholder="Escribe la dirección o cómo llegar">${esc(u)}</textarea><button class="p" id="ubg">Guardar ubicación</button>`
+    : `<b>Ubicación:</b> ${u ? `<span>${esc(u)}</span>` : '<span class="vacio">Sin indicar</span>'}`;
+}
+$('#ubi').onclick = e => {
+  if (e.target.id === 'ubg') admin('admin_set_ubicacion', { fa: fid, u: $('#ubin').value.trim() }, 'Ubicación guardada');
+};
 
 function renderMonth() {
   const st = fa().paso_min, first = (new Date(y, m, 1).getDay() + 6) % 7, n = new Date(y, m + 1, 0).getDate(), h = hoy();
