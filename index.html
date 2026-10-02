@@ -82,7 +82,7 @@ dialog input{width:100%;margin:6px 0}
   </div>
   <div id="month" class="grid"></div>
   <div id="day" hidden></div>
-  <div class="row" style="margin-top:16px">
+  <div class="row" id="pdfrow" style="margin-top:16px;display:none">
     <button class="p" id="pdf1">Descargar PDF de esta farmacia</button>
     <button id="pdfA">Descargar PDF de todas</button>
   </div>
@@ -258,6 +258,7 @@ function render() {
   }
   $('#mes').textContent = MESES[m] + ' ' + y;
   $('#adm').textContent = pin ? 'Salir de admin' : 'Admin';
+  $('#pdfrow').style.display = pin ? '' : 'none';
   renderCfg();
   renderMonth();
   if (day) renderDay(); else $('#day').hidden = true;
@@ -437,6 +438,7 @@ const needPdf = () => pdfLibs ||= loadJs('https://cdnjs.cloudflare.com/ajax/libs
   .catch(e => { pdfLibs = null; throw e; });
 
 async function pdf(all) {
+  if (!pin) return;
   try { await needPdf(); } catch { ui.alert('Revisa tu conexión e intenta de nuevo.', 'No se pudo preparar el PDF'); return; }
   const doc = new jspdf.jsPDF();
   const list = all ? F : F.filter(f => f.id == fid), n = new Date(y, m + 1, 0).getDate();
