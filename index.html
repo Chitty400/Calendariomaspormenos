@@ -7,7 +7,6 @@
 <style>
 :root{--r:#c8102e;--rd:#9d0c24;--bg:#fff;--ink:#222;--ln:#e8dede;--ok:#e9f6ea;--okt:#2e7d32;--warn:#fff1f1;--full:#fbd9dd}
 *{box-sizing:border-box}
-[hidden]{display:none!important}
 body{margin:0;font:15px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
 header{background:var(--r);color:#fff;padding:12px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
 h1{font-size:18px;margin:0}
@@ -30,6 +29,7 @@ main{max-width:900px;margin:0 auto;padding:16px}
 .day i::before{content:"";position:absolute;left:0;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:var(--r)}
 .day i.m{padding-left:0}.day i.m::before{display:none}
 .day.free{background:var(--ok)}.day.some{background:var(--warn)}.day.full{background:var(--full)}
+.day.sel{outline:3px solid var(--rd);outline-offset:-2px}
 .day.off{opacity:.45;cursor:default}.day.nil{border:0;background:none;cursor:default}
 .blk{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff;border:1px solid var(--ln);border-left:5px solid var(--okt);border-radius:8px;padding:10px;margin:6px 0}
 .blk.t{border-left-color:var(--r)}
@@ -259,7 +259,8 @@ function render() {
   $('#mes').textContent = MESES[m] + ' ' + y;
   $('#adm').textContent = pin ? 'Salir de admin' : 'Admin';
   renderCfg();
-  day ? renderDay() : renderMonth();
+  renderMonth();
+  if (day) renderDay(); else $('#day').hidden = true;
 }
 
 // Configuración del horario (solo admin): todo con listas, sin escribir horas
@@ -282,7 +283,6 @@ function renderCfg() {
 }
 
 function renderMonth() {
-  $('#day').hidden = true; $('#month').hidden = false;
   const st = fa().paso_min, first = (new Date(y, m, 1).getDay() + 6) % 7, n = new Date(y, m + 1, 0).getDate(), h = hoy();
   let html = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d => `<div class="dow">${d}</div>`).join('');
   html += '<div class="day nil"></div>'.repeat(first);
@@ -294,13 +294,12 @@ function renderMonth() {
     const txt = used
       ? nom.slice(0, 3).map(n => `<i>${esc(n)}</i>`).join('') + (used > 3 ? `<i class="m">+${used - 3} más</i>` : '')
       : '<small>Libre</small>';
-    html += `<div class="day ${cls} ${date < h && !pin ? 'off' : ''}" data-d="${date}"><b>${d}</b>${txt}</div>`;
+    html += `<div class="day ${cls} ${date < h && !pin ? 'off' : ''} ${date === day ? 'sel' : ''}" data-d="${date}"><b>${d}</b>${txt}</div>`;
   }
   $('#month').innerHTML = html;
 }
 
 function renderDay() {
-  $('#month').hidden = true;
   const el = $('#day'), past = day < hoy(), st = fa().paso_min;
   el.hidden = false;
   el.innerHTML = `<div class="bar"><button id="back">← Volver al mes</button><b>${day.split('-').reverse().join('/')}</b></div>` +
