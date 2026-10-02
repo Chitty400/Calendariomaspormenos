@@ -250,10 +250,11 @@ function render() {
 function renderCfg() {
   const el = $('#cfg'); el.hidden = !pin;
   if (!pin || !fa()) { el.dataset.sg = ''; return; }
-  const f = fa(), sg = [f.id, f.hora_apertura, f.hora_cierre, f.paso_min].join('|');
+  const f = fa(), sg = [f.id, f.nombre, f.hora_apertura, f.hora_cierre, f.paso_min].join('|');
   if (el.dataset.sg === sg) return; // no pisar lo que el admin está eligiendo
   el.dataset.sg = sg;
-  el.innerHTML = `<b>Horario de ${esc(f.nombre)}</b>
+  el.innerHTML = `<div class="row"><b>Nombre</b><input id="cn" value="${esc(f.nombre)}" maxlength="60" aria-label="Nombre de la farmacia" style="flex:1;min-width:160px"><button class="p" id="cnb">Guardar nombre</button></div>
+    <b style="display:block;margin-top:10px">Horario</b>
     <div class="row" style="margin-top:6px">Abre <div id="ca"></div> Cierra <div id="cc"></div> Reservas cada <div id="cp"></div>
     <button class="p" id="cg">Guardar horario</button></div>`;
   const T = Array.from({ length: 48 }, (_, n) => ({ v: ts(n * 30), t: h12(n * 30) }));
@@ -349,6 +350,11 @@ $('#day').onclick = async e => {
 };
 
 $('#cfg').onclick = e => {
+  if (e.target.id === 'cnb') {
+    const n = $('#cn').value.trim();
+    if (n.length < 2) { ui.alert('El nombre debe tener al menos 2 caracteres.', 'Nombre inválido'); return; }
+    admin('admin_set_nombre', { fa: fid, n }); return;
+  }
   if (e.target.id !== 'cg') return;
   const ab = $('#ca').dataset.v, ci = $('#cc').dataset.v;
   if (ci <= ab) { ui.alert('La hora de cierre debe ser después de la de apertura.', 'Horario inválido'); return; }
