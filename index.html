@@ -28,9 +28,11 @@ main{max-width:900px;margin:0 auto;padding:16px}
 .blk{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff;border:1px solid var(--ln);border-left:5px solid var(--okt);border-radius:8px;padding:10px;margin:6px 0}
 .blk.t{border-left-color:var(--r)}
 .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.cfg{background:var(--warn);border:1px solid var(--ln);border-radius:8px;padding:10px;margin-bottom:12px}
 dialog{border:0;border-radius:12px;padding:16px;width:360px;max-width:92vw}
 dialog::backdrop{background:rgba(0,0,0,.4)}
 dialog input{width:100%;margin:6px 0}
+dialog label{display:flex;flex-direction:column;gap:2px;font-size:13px}
 </style>
 </head>
 <body>
@@ -42,6 +44,7 @@ dialog input{width:100%;margin:6px 0}
   </div>
 </header>
 <main>
+  <div id="cfg" class="cfg" hidden></div>
   <div class="bar">
     <button id="prev" aria-label="Mes anterior">←</button>
     <b id="mes"></b>
@@ -57,7 +60,11 @@ dialog input{width:100%;margin:6px 0}
 
 <dialog id="dlg">
   <form id="fm">
-    <h3 id="dt" style="margin:0">Apartar bloque</h3>
+    <h3 id="dt" style="margin:0">Apartar horario</h3>
+    <div id="hr" class="row">
+      <label>Desde <select id="t1"></select></label>
+      <label>Hasta <select id="t2"></select></label>
+    </div>
     <input id="lab" placeholder="Laboratorio" required minlength="2" maxlength="80">
     <input id="prod" placeholder="Producto" maxlength="120">
     <div class="row"><button class="p">Apartar</button><button type="button" id="cx">Cancelar</button></div>
@@ -78,41 +85,51 @@ const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 const pad = n => String(n).padStart(2, '0');
 const iso = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
 const hh = t => t.slice(0, 5);
+const mins = t => { const [a, b] = t.split(':'); return +a * 60 + +b; };
+const ts = n => pad(Math.floor(n / 60)) + ':' + pad(n % 60);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const hoy = () => { const t = new Date(); return iso(t.getFullYear(), t.getMonth(), t.getDate()); };
 
-let F = [], B = [], R = [], fid = null, day = null, pin = null, bid = null;
+let F = [], R = [], fid = null, day = null, pin = null, gap = null, ed = null;
 let y = new Date().getFullYear(), m = new Date().getMonth();
+const fa = () => F.find(f => f.id == fid);
 
-const bl = f => B.filter(b => b.farmacia_id == f);
-const rs = (b, d) => R.find(r => r.bloque_id == b && r.fecha == d);
+// Huecos y reservas de un día, en orden
+function segs(date) {
+  const f = fa(), ci = mins(f.hora_cierre), out = [];
+  const rr = R.filter(r => r.farmacia_id == fid && r.fecha == date).sort((a, b) => mins(a.hora_inicio) - mins(b.hora_inicio));
+  let cur = mins(f.hora_apertura);
+  for (const r of rr) {
+    const a = mins(r.hora_inicio), b = mins(r.hora_fin);
+    if (a > cur) out.push({ a: cur, b: a });
+    out.push({ a, b, r });
+    cur = Math.max(cur, b);
+  }
+  if (cur < ci) out.push({ a: cur, b: ci });
+  return out;
+}
 
-let ed = null;
+// Código para corregir o cancelar la propia reserva
+const key = (f, d, h) => `${f}|${d}|${hh(h)}`;
+const kr = r => key(r.farmacia_id, r.fecha, r.hora_inicio);
 const CK = 'cods';
 const cods = () => { try { return JSON.parse(localStorage.getItem(CK) || '{}'); } catch { return {}; } };
-const saveCod = (b, d, c) => { try { const o = cods(); o[b + '|' + d] = c; localStorage.setItem(CK, JSON.stringify(o)); } catch { } };
-const dropCod = (b, d) => { try { const o = cods(); delete o[b + '|' + d]; localStorage.setItem(CK, JSON.stringify(o)); } catch { } };
-const miCod = (b, d) => cods()[b + '|' + d];
+const saveCod = (k, c) => { try { const o = cods(); o[k] = c; localStorage.setItem(CK, JSON.stringify(o)); } catch { } };
+const dropCod = k => { try { const o = cods(); delete o[k]; localStorage.setItem(CK, JSON.stringify(o)); } catch { } };
+const miCod = k => cods()[k];
 const newCod = () => {
   const a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', v = crypto.getRandomValues(new Uint8Array(6));
   return [...v].map(x => a[x % a.length]).join('');
 };
-async function labRpc(fn, args, b, apply) {
-  const { error } = await sb.rpc(fn, args);
-  if (error) { alert(error.message); if (/Código/.test(error.message)) dropCod(b, day); }
-  else if (apply) { apply(); render(); }
-  load();
-}
 
 async function load() {
   const ini = iso(y, m, 1), fin = m === 11 ? iso(y + 1, 0, 1) : iso(y, m + 1, 1);
-  const [a, b, c] = await Promise.all([
+  const [a, c] = await Promise.all([
     sb.from('farmacias').select('*').order('id'),
-    sb.from('bloques').select('*').order('hora_inicio'),
     sb.from('reservas').select('*').gte('fecha', ini).lt('fecha', fin)
   ]);
-  if (a.error || b.error || c.error) { alert('No se pudo conectar con la base de datos. Revisa SB_URL y SB_KEY.'); return; }
-  F = a.data; B = b.data; R = c.data;
+  if (a.error || c.error) { alert('No se pudo conectar con la base de datos. Revisa SB_URL y SB_KEY.'); return; }
+  F = a.data; R = c.data;
   if (!fid) fid = F[0]?.id;
   render();
 }
@@ -121,38 +138,52 @@ function render() {
   $('#fs').innerHTML = F.map(f => `<option value="${f.id}" ${f.id == fid ? 'selected' : ''}>${esc(f.nombre)}</option>`).join('');
   $('#mes').textContent = MESES[m] + ' ' + y;
   $('#adm').textContent = pin ? 'Salir de admin' : 'Admin';
+  renderCfg();
   day ? renderDay() : renderMonth();
+}
+
+// Configuración del horario (solo admin): todo con listas, sin escribir horas
+function renderCfg() {
+  const el = $('#cfg'); el.hidden = !pin;
+  if (!pin || !fa()) return;
+  const f = fa();
+  const o = v => Array.from({ length: 48 }, (_, n) => ts(n * 30)).map(t => `<option ${t === v ? 'selected' : ''}>${t}</option>`).join('');
+  el.innerHTML = `<b>Horario de ${esc(f.nombre)}</b>
+    <div class="row" style="margin-top:6px">Abre <select id="ca">${o(hh(f.hora_apertura))}</select>
+    Cierra <select id="cc">${o(hh(f.hora_cierre))}</select>
+    Reservas cada <select id="cp">${[15, 30, 60].map(p => `<option value="${p}" ${p == f.paso_min ? 'selected' : ''}>${p} min</option>`).join('')}</select>
+    <button class="p" id="cg">Guardar horario</button></div>`;
 }
 
 function renderMonth() {
   $('#day').hidden = true; $('#month').hidden = false;
-  const bs = bl(fid), first = (new Date(y, m, 1).getDay() + 6) % 7, n = new Date(y, m + 1, 0).getDate(), h = hoy();
+  const st = fa().paso_min, first = (new Date(y, m, 1).getDay() + 6) % 7, n = new Date(y, m + 1, 0).getDate(), h = hoy();
   let html = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d => `<div class="dow">${d}</div>`).join('');
   html += '<div class="day nil"></div>'.repeat(first);
   for (let d = 1; d <= n; d++) {
-    const date = iso(y, m, d), used = bs.filter(b => rs(b.id, date)).length, tot = bs.length;
-    const cls = !tot ? '' : used === 0 ? 'free' : used === tot ? 'full' : 'some';
-    html += `<div class="day ${cls} ${date < h && !pin ? 'off' : ''}" data-d="${date}"><b>${d}</b><small>${tot ? (tot - used) + ' libres' : 'Sin bloques'}</small></div>`;
+    const date = iso(y, m, d), S = segs(date), used = S.filter(s => s.r).length;
+    const libre = S.filter(s => !s.r).reduce((t, s) => t + s.b - s.a, 0);
+    const cls = !used ? 'free' : libre < st ? 'full' : 'some';
+    html += `<div class="day ${cls} ${date < h && !pin ? 'off' : ''}" data-d="${date}"><b>${d}</b><small>${used ? used + (used > 1 ? ' reservas' : ' reserva') : 'Libre'}</small></div>`;
   }
   $('#month').innerHTML = html;
 }
 
 function renderDay() {
   $('#month').hidden = true;
-  const el = $('#day'), bs = bl(fid), past = day < hoy();
+  const el = $('#day'), past = day < hoy(), st = fa().paso_min;
   el.hidden = false;
-  el.innerHTML =
-    `<div class="bar"><button id="back">← Volver al mes</button><b>${day.split('-').reverse().join('/')}</b></div>` +
-    (bs.length ? bs.map(b => {
-      const r = rs(b.id, day);
-      return `<div class="blk ${r ? 't' : ''}">
-        <div><b>${hh(b.hora_inicio)} – ${hh(b.hora_fin)}</b><br>${r ? esc(r.laboratorio) + (r.producto ? ' · ' + esc(r.producto) : '') : 'Libre'}</div>
-        <div class="row">
-          ${r ? (pin ? `<button data-x="r${r.id}">Liberar</button>` : miCod(b.id, day) ? `<button data-x="e${r.id}|${b.id}">Corregir</button><button data-x="c${r.id}|${b.id}">Cancelar</button>` : `<button data-x="k${r.id}|${b.id}">Tengo código</button>`) : (past ? '' : `<button class="p" data-x="a${b.id}">Apartar</button>`)}
-          ${pin ? `<button data-x="b${b.id}">Quitar bloque</button>` : ''}
-        </div></div>`;
-    }).join('') : '<p>Esta farmacia no tiene bloques.</p>') +
-    (pin ? `<div class="row" style="margin-top:12px"><input type="time" id="ti" aria-label="Inicio"><input type="time" id="te" aria-label="Fin"><button class="p" id="addb">Agregar bloque</button></div>` : '');
+  el.innerHTML = `<div class="bar"><button id="back">← Volver al mes</button><b>${day.split('-').reverse().join('/')}</b></div>` +
+    segs(day).map((s, i) => {
+      if (s.r) {
+        const r = s.r;
+        return `<div class="blk t"><div><b>${ts(s.a)} – ${ts(s.b)}</b><br>${esc(r.laboratorio)}${r.producto ? ' · ' + esc(r.producto) : ''}</div>
+          <div class="row">${pin ? `<button data-x="r${r.id}">Liberar</button>` : miCod(kr(r))
+            ? `<button data-x="e${r.id}">Corregir</button><button data-x="c${r.id}">Cancelar</button>`
+            : `<button data-x="k${r.id}">Tengo código</button>`}</div></div>`;
+      }
+      return `<div class="blk"><div><b>${ts(s.a)} – ${ts(s.b)}</b><br>Libre</div>${!past && s.b - s.a >= st ? `<button class="p" data-x="a${i}">Apartar</button>` : ''}</div>`;
+    }).join('');
 }
 
 async function admin(fn, args) {
@@ -160,6 +191,31 @@ async function admin(fn, args) {
   if (error) { alert(error.message); if (/PIN/.test(error.message)) pin = null; }
   load();
 }
+
+async function labRpc(fn, args, k, apply) {
+  const { error } = await sb.rpc(fn, args);
+  if (error) { alert(error.message); if (/Código/.test(error.message)) dropCod(k); }
+  else if (apply) { apply(); render(); }
+  load();
+}
+
+// Apartar: el usuario elige "Desde" y "Hasta" solo dentro del hueco libre
+function openApartar(g) {
+  gap = g; ed = null; $('#dt').textContent = 'Apartar horario'; $('#hr').hidden = false;
+  const st = fa().paso_min;
+  let o = '';
+  for (let n = Math.ceil(g.a / st) * st; n + st <= g.b; n += st) o += `<option>${ts(n)}</option>`;
+  $('#t1').innerHTML = o; fillHasta();
+  try { $('#lab').value = localStorage.getItem('lab') || ''; } catch { }
+  $('#prod').value = ''; $('#dlg').showModal();
+}
+function fillHasta() {
+  const st = fa().paso_min, a = mins($('#t1').value);
+  let o = '';
+  for (let n = a + st; n <= gap.b; n += st) o += `<option>${ts(n)}</option>`;
+  $('#t2').innerHTML = o; $('#t2').value = ts(Math.min(a + 60, gap.b));
+}
+$('#t1').onchange = fillHasta;
 
 $('#month').onclick = e => {
   const c = e.target.closest('.day');
@@ -169,54 +225,47 @@ $('#month').onclick = e => {
 
 $('#day').onclick = e => {
   if (e.target.id === 'back') { day = null; render(); return; }
-  if (e.target.id === 'addb') {
-    const i = $('#ti').value, f = $('#te').value;
-    if (!i || !f || f <= i) { alert('Indica una hora de inicio y una de fin válidas.'); return; }
-    admin('admin_add_bloque', { f: fid, i, e: f }); return;
-  }
   const x = e.target.dataset.x; if (!x) return;
-  const k = x[0], [id, bb] = x.slice(1).split('|').map(Number);
-  if (k === 'a') {
-    bid = id; ed = null; $('#dt').textContent = 'Apartar bloque';
-    try { $('#lab').value = localStorage.getItem('lab') || ''; } catch { }
-    $('#prod').value = ''; $('#dlg').showModal();
-  }
+  const k = x[0], id = +x.slice(1), r = R.find(z => z.id === id);
+  if (k === 'a') openApartar(segs(day)[id]);
   if (k === 'e') {
-    const r = R.find(z => z.id === id);
-    bid = bb; ed = id; $('#dt').textContent = 'Corregir reserva';
+    ed = id; $('#dt').textContent = 'Corregir reserva'; $('#hr').hidden = true;
     $('#lab').value = r.laboratorio; $('#prod').value = r.producto || ''; $('#dlg').showModal();
   }
-  if (k === 'c' && confirm('¿Cancelar tu reserva?')) labRpc('lab_del_reserva', { c: miCod(bb, day), i: id }, bb, () => { R = R.filter(z => z.id !== id); });
+  if (k === 'c' && confirm('¿Cancelar tu reserva?')) labRpc('lab_del_reserva', { c: miCod(kr(r)), i: id }, kr(r), () => { R = R.filter(z => z.id !== id); });
   if (k === 'k') {
     const c = (prompt('Código de tu reserva') || '').trim().toUpperCase();
-    if (c) { saveCod(bb, day, c); render(); }
+    if (c) { saveCod(kr(r), c); render(); }
   }
-  if (k === 'r' && confirm('¿Liberar este bloque?')) admin('admin_del_reserva', { i: id });
-  if (k === 'b' && confirm('¿Quitar este bloque y sus reservas?')) admin('admin_del_bloque', { i: id });
+  if (k === 'r' && confirm('¿Liberar este horario?')) admin('admin_del_reserva', { i: id });
+};
+
+$('#cfg').onclick = e => {
+  if (e.target.id !== 'cg') return;
+  const ab = $('#ca').value, ci = $('#cc').value;
+  if (ci <= ab) { alert('La hora de cierre debe ser después de la de apertura.'); return; }
+  admin('admin_set_horario', { fa: fid, ab, ci, st: +$('#cp').value });
 };
 
 $('#fm').onsubmit = async e => {
   e.preventDefault();
   const lab = $('#lab').value.trim(), prod = $('#prod').value.trim() || null;
   if (ed) {
-    const eid = ed; ed = null;
+    const id = ed, r = R.find(z => z.id === id); ed = null;
     $('#dlg').close();
-    await labRpc('lab_edit_reserva', { c: miCod(bid, day), i: eid, l: lab, pr: prod }, bid, () => {
-      const r = R.find(z => z.id === eid);
-      if (r) { r.laboratorio = lab; r.producto = prod; }
-    });
+    await labRpc('lab_edit_reserva', { c: miCod(kr(r)), i: id, l: lab, pr: prod }, kr(r), () => { r.laboratorio = lab; r.producto = prod; });
     return;
   }
-  const c = newCod();
-  const { error } = await sb.rpc('apartar', { b: bid, f: day, l: lab, pr: prod, c });
+  const i = $('#t1').value, f2 = $('#t2').value, c = newCod();
+  const { error } = await sb.rpc('apartar', { fa: fid, d: day, i, e: f2, l: lab, pr: prod, c });
   $('#dlg').close();
-  if (error) alert(error.code === '23505' ? 'Ese bloque ya fue apartado por otro laboratorio.' : 'Error: ' + error.message);
+  if (error) alert(error.message);
   else {
-    saveCod(bid, day, c);
-    R.push({ id: -1, bloque_id: bid, fecha: day, laboratorio: lab, producto: prod });
+    saveCod(key(fid, day, i), c);
+    R.push({ id: -1, farmacia_id: fid, fecha: day, hora_inicio: i, hora_fin: f2, laboratorio: lab, producto: prod });
     render();
     try { localStorage.setItem('lab', lab); } catch { }
-    alert('Reservado. Tu código para corregir o cancelar: ' + c + '\nGuárdalo.');
+    alert(`Reservado ${i} – ${f2}. Tu código para corregir o cancelar: ${c}\nGuárdalo.`);
   }
   load();
 };
@@ -239,21 +288,22 @@ function pdf(all) {
   const list = all ? F : F.filter(f => f.id == fid), n = new Date(y, m + 1, 0).getDate();
   list.forEach((f, k) => {
     if (k) doc.addPage();
-    const bs = bl(f.id), body = [];
     doc.setFontSize(15); doc.setTextColor(200, 16, 46);
     doc.text(`${f.nombre} · Días de producto · ${MESES[m]} ${y}`, 14, 14);
+    doc.setFontSize(9); doc.setTextColor(90);
+    doc.text(`Horario de atención: ${hh(f.hora_apertura)} a ${hh(f.hora_cierre)}`, 14, 19);
+    const body = [];
     for (let d = 1; d <= n; d++) {
-      const date = iso(y, m, d);
-      body.push([`${DIAS[new Date(y, m, d).getDay()]} ${d}`, ...bs.map(b => {
-        const r = rs(b.id, date);
-        return r ? r.laboratorio + (r.producto ? ' - ' + r.producto : '') : 'Disponible';
-      })]);
+      const date = iso(y, m, d), w = `${DIAS[new Date(y, m, d).getDay()]} ${d}`;
+      const rr = R.filter(r => r.farmacia_id == f.id && r.fecha == date).sort((a, b) => mins(a.hora_inicio) - mins(b.hora_inicio));
+      if (!rr.length) body.push([w, 'Disponible todo el día', '', '']);
+      else rr.forEach((r, j) => body.push([j ? '' : w, hh(r.hora_inicio) + '-' + hh(r.hora_fin), r.laboratorio, r.producto || '']));
     }
     doc.autoTable({
-      startY: 20, theme: 'grid', styles: { fontSize: 8, cellPadding: 1.5 },
-      head: [['Día', ...bs.map(b => hh(b.hora_inicio) + '-' + hh(b.hora_fin))]], body,
+      startY: 23, theme: 'grid', styles: { fontSize: 8, cellPadding: 1.5 },
+      head: [['Día', 'Horario', 'Laboratorio', 'Producto']], body,
       headStyles: { fillColor: [200, 16, 46] },
-      didParseCell: h => { if (h.section === 'body' && h.column.index > 0 && h.cell.raw === 'Disponible') h.cell.styles.textColor = [150, 150, 150]; }
+      didParseCell: h => { if (h.section === 'body' && h.cell.raw === 'Disponible todo el día') h.cell.styles.textColor = [150, 150, 150]; }
     });
   });
   doc.save(`Calendario_${MESES[m]}_${y}${all ? '_todas' : ''}.pdf`);
@@ -267,10 +317,10 @@ let t, poll;
 const reload = () => { clearTimeout(t); t = setTimeout(load, 300); };
 sb.channel('calendario-live')
   .on('postgres_changes', { event: '*', schema: 'public', table: 'reservas' }, reload)
-  .on('postgres_changes', { event: '*', schema: 'public', table: 'bloques' }, reload)
+  .on('postgres_changes', { event: '*', schema: 'public', table: 'farmacias' }, reload)
   .subscribe(s => {
     clearInterval(poll);
-    if (s !== 'SUBSCRIBED') poll = setInterval(load, 15000);  // respaldo si el realtime no conecta
+    if (s !== 'SUBSCRIBED') poll = setInterval(load, 15000);
   });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 </script>
