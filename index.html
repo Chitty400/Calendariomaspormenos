@@ -110,8 +110,6 @@ dialog input{width:100%;margin:6px 0}
 <div id="sn" role="status" aria-live="polite"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script>
 const SB_URL = 'https://vmseqwogmuiyqtjgzctt.supabase.co';
 const SB_KEY = 'sb_publishable_uZITUaJiJUAZKQVBzGnusw_VMFp72b2';
@@ -408,7 +406,15 @@ $('#adm').onclick = async () => {
   if (data === true) { pin = p; render(); } else ui.alert('Intenta de nuevo.', 'PIN incorrecto');
 };
 
-function pdf(all) {
+// Las librerías del PDF se descargan solo la primera vez que se pide un PDF
+const loadJs = src => new Promise((ok, no) => { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = no; document.head.appendChild(s); });
+let pdfLibs;
+const needPdf = () => pdfLibs ||= loadJs('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+  .then(() => loadJs('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'))
+  .catch(e => { pdfLibs = null; throw e; });
+
+async function pdf(all) {
+  try { await needPdf(); } catch { ui.alert('Revisa tu conexión e intenta de nuevo.', 'No se pudo preparar el PDF'); return; }
   const doc = new jspdf.jsPDF();
   const list = all ? F : F.filter(f => f.id == fid), n = new Date(y, m + 1, 0).getDate();
   list.forEach((f, k) => {
