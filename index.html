@@ -10,11 +10,11 @@
 body{margin:0;font:15px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
 header{background:var(--r);color:#fff;padding:12px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
 h1{font-size:18px;margin:0}
-select,button,input{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--ln)}
+button,input{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--ln)}
 button{cursor:pointer;background:#fff;color:var(--r);border-color:var(--r);font-weight:600}
 button.p{background:var(--r);color:#fff}
 header button{border-color:#fff}
-button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--rd);outline-offset:2px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--rd);outline-offset:2px}
 main{max-width:900px;margin:0 auto;padding:16px}
 .bar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
 .bar b{font-size:17px}
@@ -31,17 +31,32 @@ main{max-width:900px;margin:0 auto;padding:16px}
 .blk.t{border-left-color:var(--r)}
 .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .cfg{background:var(--warn);border:1px solid var(--ln);border-radius:8px;padding:10px;margin-bottom:12px}
-dialog{border:0;border-radius:12px;padding:16px;width:360px;max-width:92vw}
+dialog{border:0;border-radius:12px;padding:16px;width:360px;max-width:92vw;overflow:visible}
 dialog::backdrop{background:rgba(0,0,0,.4)}
 dialog input{width:100%;margin:6px 0}
-dialog label{display:flex;flex-direction:column;gap:2px;font-size:13px}
+.fld{display:flex;flex-direction:column;gap:2px;font-size:13px;flex:1;min-width:130px}
+/* Menú desplegable */
+.dd{position:relative;display:inline-block;max-width:100%}
+.dd>button{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:8px 12px;border-radius:10px;border-color:var(--ln);background:#fff;color:var(--ink);text-align:left}
+.dd>button span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd>button::after{content:"";flex:none;width:7px;height:7px;border-right:2px solid var(--r);border-bottom:2px solid var(--r);transform:rotate(45deg) translateY(-2px);transition:transform .15s}
+.dd.open>button{border-color:var(--r)}
+.dd.open>button::after{transform:rotate(-135deg) translateY(-2px)}
+.dd ul{position:absolute;z-index:20;left:0;top:100%;min-width:100%;max-width:min(88vw,320px);max-height:240px;overflow:auto;margin:6px 0 0;padding:4px;list-style:none;background:#fff;color:var(--ink);border:1px solid var(--ln);border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.18)}
+.dd.r ul{left:auto;right:0}
+.dd.up ul{top:auto;bottom:100%;margin:0 0 6px}
+.dd li{padding:8px 12px;border-radius:8px;cursor:pointer;white-space:nowrap}
+.dd li:hover,.dd li:focus{background:var(--warn);outline:0}
+.dd li[aria-selected=true]{background:var(--r);color:#fff;font-weight:600}
+.dd li:focus-visible{outline:2px solid var(--rd);outline-offset:-2px}
+@media (prefers-reduced-motion:reduce){.dd>button::after{transition:none}}
 </style>
 </head>
 <body>
 <header>
   <h1>Días de producto · Más por Menos</h1>
   <div class="row">
-    <select id="fs" aria-label="Farmacia"></select>
+    <div id="fs" class="r"></div>
     <button id="adm">Admin</button>
   </div>
 </header>
@@ -62,10 +77,10 @@ dialog label{display:flex;flex-direction:column;gap:2px;font-size:13px}
 
 <dialog id="dlg">
   <form id="fm">
-    <h3 id="dt" style="margin:0">Apartar horario</h3>
+    <h3 id="dt" style="margin:0 0 8px">Apartar horario</h3>
     <div id="hr" class="row">
-      <label>Desde <select id="t1"></select></label>
-      <label>Hasta <select id="t2"></select></label>
+      <div class="fld"><span>Desde</span><div id="t1"></div></div>
+      <div class="fld"><span>Hasta</span><div id="t2"></div></div>
     </div>
     <input id="lab" placeholder="Laboratorio" required minlength="2" maxlength="80">
     <input id="prod" placeholder="Producto" maxlength="120">
@@ -89,8 +104,53 @@ const iso = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
 const hh = t => t.slice(0, 5);
 const mins = t => { const [a, b] = t.split(':'); return +a * 60 + +b; };
 const ts = n => pad(Math.floor(n / 60)) + ':' + pad(n % 60);
+// Formato 12 horas: acepta minutos (480) o texto ("08:00" / "08:00:00")
+const h12 = t => { const n = typeof t === 'number' ? t : mins(t), h = Math.floor(n / 60) % 24; return `${h % 12 || 12}:${pad(n % 60)} ${h < 12 ? 'AM' : 'PM'}`; };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const hoy = () => { const t = new Date(); return iso(t.getFullYear(), t.getMonth(), t.getDate()); };
+
+// Menú desplegable propio: dd(contenedor, [{v, t}], valorActual, alCambiar, etiqueta)
+function dd(host, opts, val, cb, label) {
+  host.classList.add('dd'); host._o = opts; host._cb = cb;
+  host.innerHTML = `<button type="button" aria-haspopup="listbox" aria-label="${esc(label)}"><span></span></button><ul role="listbox" hidden></ul>`;
+  setDD(host, val, false);
+}
+function setDD(host, val, fire) {
+  const o = host._o.find(x => String(x.v) === String(val)) || host._o[0];
+  host.dataset.v = o ? o.v : '';
+  host.querySelector('button span').textContent = o ? o.t : '—';
+  host.querySelector('ul').innerHTML = host._o.map(x => `<li role="option" tabindex="-1" data-v="${esc(x.v)}" aria-selected="${!!o && String(x.v) === String(o.v)}">${esc(x.t)}</li>`).join('');
+  if (fire && host._cb) host._cb(host.dataset.v);
+}
+function openDD(h) {
+  document.querySelectorAll('.dd.open').forEach(closeDD);
+  const u = h.querySelector('ul'); u.hidden = false; h.classList.add('open');
+  h.classList.toggle('up', h.getBoundingClientRect().bottom + 250 > innerHeight && h.getBoundingClientRect().top > 250);
+  const s = u.querySelector('[aria-selected=true]') || u.firstElementChild;
+  if (s) { u.scrollTop = s.offsetTop - u.clientHeight / 2; s.focus({ preventScroll: true }); }
+}
+function closeDD(h) { h.classList.remove('open', 'up'); h.querySelector('ul').hidden = true; }
+document.addEventListener('click', e => {
+  const h = e.target.closest('.dd');
+  document.querySelectorAll('.dd.open').forEach(x => { if (x !== h) closeDD(x); });
+  if (!h) return;
+  const li = e.target.closest('li');
+  if (li) {
+    const v = li.dataset.v; closeDD(h); h.querySelector('button').focus();
+    if (v !== h.dataset.v) setDD(h, v, true);
+  } else if (e.target.closest('button')) h.classList.contains('open') ? closeDD(h) : openDD(h);
+});
+document.addEventListener('keydown', e => {
+  const h = e.target.closest && e.target.closest('.dd'); if (!h) return;
+  const open = h.classList.contains('open'), lis = [...h.querySelectorAll('li')];
+  if (e.key === 'Escape' && open) { e.preventDefault(); closeDD(h); h.querySelector('button').focus(); }
+  else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!open) { openDD(h); return; }
+    const i = lis.indexOf(document.activeElement), n = e.key === 'ArrowDown' ? i + 1 : i - 1;
+    lis[Math.max(0, Math.min(lis.length - 1, n))].focus();
+  } else if ((e.key === 'Enter' || e.key === ' ') && e.target.tagName === 'LI') { e.preventDefault(); e.target.click(); }
+});
 
 let F = [], R = [], fid = null, day = null, pin = null, gap = null, ed = null;
 let y = new Date().getFullYear(), m = new Date().getMonth();
@@ -137,7 +197,12 @@ async function load() {
 }
 
 function render() {
-  $('#fs').innerHTML = F.map(f => `<option value="${f.id}" ${f.id == fid ? 'selected' : ''}>${esc(f.nombre)}</option>`).join('');
+  // El selector de farmacia solo se reconstruye si cambió, para no cerrarlo con las actualizaciones automáticas
+  const el = $('#fs'), sg = JSON.stringify([F.map(f => [f.id, f.nombre]), fid]);
+  if (el._sg !== sg) {
+    el._sg = sg;
+    dd(el, F.map(f => ({ v: f.id, t: f.nombre })), fid, v => { fid = +v; day = null; render(); }, 'Farmacia');
+  }
   $('#mes').textContent = MESES[m] + ' ' + y;
   $('#adm').textContent = pin ? 'Salir de admin' : 'Admin';
   renderCfg();
@@ -147,14 +212,17 @@ function render() {
 // Configuración del horario (solo admin): todo con listas, sin escribir horas
 function renderCfg() {
   const el = $('#cfg'); el.hidden = !pin;
-  if (!pin || !fa()) return;
-  const f = fa();
-  const o = v => Array.from({ length: 48 }, (_, n) => ts(n * 30)).map(t => `<option ${t === v ? 'selected' : ''}>${t}</option>`).join('');
+  if (!pin || !fa()) { el.dataset.sg = ''; return; }
+  const f = fa(), sg = [f.id, f.hora_apertura, f.hora_cierre, f.paso_min].join('|');
+  if (el.dataset.sg === sg) return; // no pisar lo que el admin está eligiendo
+  el.dataset.sg = sg;
   el.innerHTML = `<b>Horario de ${esc(f.nombre)}</b>
-    <div class="row" style="margin-top:6px">Abre <select id="ca">${o(hh(f.hora_apertura))}</select>
-    Cierra <select id="cc">${o(hh(f.hora_cierre))}</select>
-    Reservas cada <select id="cp">${[15, 30, 60].map(p => `<option value="${p}" ${p == f.paso_min ? 'selected' : ''}>${p} min</option>`).join('')}</select>
+    <div class="row" style="margin-top:6px">Abre <div id="ca"></div> Cierra <div id="cc"></div> Reservas cada <div id="cp"></div>
     <button class="p" id="cg">Guardar horario</button></div>`;
+  const T = Array.from({ length: 48 }, (_, n) => ({ v: ts(n * 30), t: h12(n * 30) }));
+  dd($('#ca'), T, hh(f.hora_apertura), null, 'Hora de apertura');
+  dd($('#cc'), T, hh(f.hora_cierre), null, 'Hora de cierre');
+  dd($('#cp'), [15, 30, 60].map(p => ({ v: p, t: p + ' min' })), f.paso_min, null, 'Duración mínima de reserva');
 }
 
 function renderMonth() {
@@ -183,12 +251,12 @@ function renderDay() {
     segs(day).map((s, i) => {
       if (s.r) {
         const r = s.r;
-        return `<div class="blk t"><div><b>${ts(s.a)} – ${ts(s.b)}</b><br>${esc(r.laboratorio)}${r.producto ? ' · ' + esc(r.producto) : ''}</div>
+        return `<div class="blk t"><div><b>${h12(s.a)} – ${h12(s.b)}</b><br>${esc(r.laboratorio)}${r.producto ? ' · ' + esc(r.producto) : ''}</div>
           <div class="row">${pin ? `<button data-x="r${r.id}">Liberar</button>` : miCod(kr(r))
             ? `<button data-x="e${r.id}">Corregir</button><button data-x="c${r.id}">Cancelar</button>`
             : `<button data-x="k${r.id}">Tengo código</button>`}</div></div>`;
       }
-      return `<div class="blk"><div><b>${ts(s.a)} – ${ts(s.b)}</b><br>Libre</div>${!past && s.b - s.a >= st ? `<button class="p" data-x="a${i}">Apartar</button>` : ''}</div>`;
+      return `<div class="blk"><div><b>${h12(s.a)} – ${h12(s.b)}</b><br>Libre</div>${!past && s.b - s.a >= st ? `<button class="p" data-x="a${i}">Apartar</button>` : ''}</div>`;
     }).join('');
 }
 
@@ -208,20 +276,17 @@ async function labRpc(fn, args, k, apply) {
 // Apartar: el usuario elige "Desde" y "Hasta" solo dentro del hueco libre
 function openApartar(g) {
   gap = g; ed = null; $('#dt').textContent = 'Apartar horario'; $('#hr').hidden = false;
-  const st = fa().paso_min;
-  let o = '';
-  for (let n = Math.ceil(g.a / st) * st; n + st <= g.b; n += st) o += `<option>${ts(n)}</option>`;
-  $('#t1').innerHTML = o; fillHasta();
+  const st = fa().paso_min, o = [];
+  for (let n = Math.ceil(g.a / st) * st; n + st <= g.b; n += st) o.push({ v: ts(n), t: h12(n) });
+  dd($('#t1'), o, o[0] && o[0].v, fillHasta, 'Desde'); fillHasta();
   try { $('#lab').value = localStorage.getItem('lab') || ''; } catch { }
   $('#prod').value = ''; $('#dlg').showModal();
 }
 function fillHasta() {
-  const st = fa().paso_min, a = mins($('#t1').value);
-  let o = '';
-  for (let n = a + st; n <= gap.b; n += st) o += `<option>${ts(n)}</option>`;
-  $('#t2').innerHTML = o; $('#t2').value = ts(Math.min(a + 60, gap.b));
+  const st = fa().paso_min, a = mins($('#t1').dataset.v), o = [];
+  for (let n = a + st; n <= gap.b; n += st) o.push({ v: ts(n), t: h12(n) });
+  dd($('#t2'), o, ts(Math.min(a + 60, gap.b)), null, 'Hasta');
 }
-$('#t1').onchange = fillHasta;
 
 $('#month').onclick = e => {
   const c = e.target.closest('.day');
@@ -248,9 +313,9 @@ $('#day').onclick = e => {
 
 $('#cfg').onclick = e => {
   if (e.target.id !== 'cg') return;
-  const ab = $('#ca').value, ci = $('#cc').value;
+  const ab = $('#ca').dataset.v, ci = $('#cc').dataset.v;
   if (ci <= ab) { alert('La hora de cierre debe ser después de la de apertura.'); return; }
-  admin('admin_set_horario', { fa: fid, ab, ci, st: +$('#cp').value });
+  admin('admin_set_horario', { fa: fid, ab, ci, st: +$('#cp').dataset.v });
 };
 
 $('#fm').onsubmit = async e => {
@@ -262,7 +327,7 @@ $('#fm').onsubmit = async e => {
     await labRpc('lab_edit_reserva', { c: miCod(kr(r)), i: id, l: lab, pr: prod }, kr(r), () => { r.laboratorio = lab; r.producto = prod; });
     return;
   }
-  const i = $('#t1').value, f2 = $('#t2').value, c = newCod();
+  const i = $('#t1').dataset.v, f2 = $('#t2').dataset.v, c = newCod();
   const { error } = await sb.rpc('apartar', { fa: fid, d: day, i, e: f2, l: lab, pr: prod, c });
   $('#dlg').close();
   if (error) alert(error.message);
@@ -271,13 +336,12 @@ $('#fm').onsubmit = async e => {
     R.push({ id: -1, farmacia_id: fid, fecha: day, hora_inicio: i, hora_fin: f2, laboratorio: lab, producto: prod });
     render();
     try { localStorage.setItem('lab', lab); } catch { }
-    alert(`Reservado ${i} – ${f2}. Tu código para corregir o cancelar: ${c}\nGuárdalo.`);
+    alert(`Reservado ${h12(i)} – ${h12(f2)}. Tu código para corregir o cancelar: ${c}\nGuárdalo.`);
   }
   load();
 };
 $('#cx').onclick = () => { ed = null; $('#dlg').close(); };
 
-$('#fs').onchange = e => { fid = +e.target.value; day = null; render(); };
 $('#prev').onclick = () => { m--; if (m < 0) { m = 11; y--; } day = null; load(); };
 $('#next').onclick = () => { m++; if (m > 11) { m = 0; y++; } day = null; load(); };
 
@@ -297,13 +361,13 @@ function pdf(all) {
     doc.setFontSize(15); doc.setTextColor(200, 16, 46);
     doc.text(`${f.nombre} · Días de producto · ${MESES[m]} ${y}`, 14, 14);
     doc.setFontSize(9); doc.setTextColor(90);
-    doc.text(`Horario de atención: ${hh(f.hora_apertura)} a ${hh(f.hora_cierre)}`, 14, 19);
+    doc.text(`Horario de atención: ${h12(f.hora_apertura)} a ${h12(f.hora_cierre)}`, 14, 19);
     const body = [];
     for (let d = 1; d <= n; d++) {
       const date = iso(y, m, d), w = `${DIAS[new Date(y, m, d).getDay()]} ${d}`;
       const rr = R.filter(r => r.farmacia_id == f.id && r.fecha == date).sort((a, b) => mins(a.hora_inicio) - mins(b.hora_inicio));
       if (!rr.length) body.push([w, 'Disponible todo el día', '', '']);
-      else rr.forEach((r, j) => body.push([j ? '' : w, hh(r.hora_inicio) + '-' + hh(r.hora_fin), r.laboratorio, r.producto || '']));
+      else rr.forEach((r, j) => body.push([j ? '' : w, h12(r.hora_inicio) + ' - ' + h12(r.hora_fin), r.laboratorio, r.producto || '']));
     }
     doc.autoTable({
       startY: 23, theme: 'grid', styles: { fontSize: 8, cellPadding: 1.5 },
