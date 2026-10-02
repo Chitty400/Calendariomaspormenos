@@ -56,7 +56,9 @@ dialog input{width:100%;margin:6px 0}
 #mb input{text-align:center;margin:0 0 12px}
 #mb .row{justify-content:center}
 #mc{font:700 28px/1 ui-monospace,monospace;letter-spacing:.2em;background:var(--warn);border:1px dashed var(--r);border-radius:10px;padding:14px;margin:0 0 12px;color:var(--rd);user-select:all}
-@media (prefers-reduced-motion:reduce){.dd>button::after{transition:none}}
+#sn{position:fixed;left:50%;bottom:20px;z-index:50;max-width:90vw;transform:translate(-50%,20px);opacity:0;pointer-events:none;background:#2b2b2b;color:#fff;padding:10px 18px;border-radius:10px;border-left:5px solid var(--okt);box-shadow:0 8px 24px rgba(0,0,0,.3);transition:opacity .2s,transform .2s}
+#sn.on{opacity:1;transform:translate(-50%,0)}
+@media (prefers-reduced-motion:reduce){.dd>button::after,#sn{transition:none}}
 </style>
 </head>
 <body>
@@ -105,6 +107,8 @@ dialog input{width:100%;margin:6px 0}
   </form>
 </dialog>
 
+<div id="sn" role="status" aria-live="polite"></div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -145,6 +149,13 @@ const ui = {
   confirm: (text, title = '¿Confirmar?', ok = 'Aceptar') => msg({ title, text, ok, cancel: true }),
   prompt: (title, kind = 'text') => msg({ title, input: kind, cancel: true })
 };
+
+// Aviso breve de confirmación
+let snT;
+function snack(t) {
+  const el = $('#sn'); el.textContent = t; el.classList.add('on');
+  clearTimeout(snT); snT = setTimeout(() => el.classList.remove('on'), 2800);
+}
 
 // Menú desplegable propio: dd(contenedor, [{v, t}], valorActual, alCambiar, etiqueta)
 function dd(host, opts, val, cb, label) {
@@ -298,16 +309,17 @@ function renderDay() {
     }).join('');
 }
 
-async function admin(fn, args) {
+async function admin(fn, args, ok) {
   const { error } = await sb.rpc(fn, { p: pin, ...args });
   if (error) { ui.alert(error.message, 'No se pudo completar'); if (/PIN/.test(error.message)) pin = null; }
+  else if (ok) snack(ok);
   load();
 }
 
-async function labRpc(fn, args, k, apply) {
+async function labRpc(fn, args, k, apply, ok) {
   const { error } = await sb.rpc(fn, args);
   if (error) { ui.alert(error.message, 'No se pudo completar'); if (/Código/.test(error.message)) dropCod(k); }
-  else if (apply) { apply(); render(); }
+  else { if (apply) { apply(); render(); } if (ok) snack(ok); }
   load();
 }
 
@@ -341,24 +353,24 @@ $('#day').onclick = async e => {
     ed = id; $('#dt').textContent = 'Corregir reserva'; $('#hr').hidden = true;
     $('#lab').value = r.laboratorio; $('#prod').value = r.producto || ''; $('#dlg').showModal();
   }
-  if (k === 'c' && await ui.confirm('Se liberará ese horario.', '¿Cancelar tu reserva?', 'Sí, cancelar')) labRpc('lab_del_reserva', { c: miCod(kr(r)), i: id }, kr(r), () => { R = R.filter(z => z.id !== id); });
+  if (k === 'c' && await ui.confirm('Se liberará ese horario.', '¿Cancelar tu reserva?', 'Sí, cancelar')) labRpc('lab_del_reserva', { c: miCod(kr(r)), i: id }, kr(r), () => { R = R.filter(z => z.id !== id); }, 'Reserva cancelada');
   if (k === 'k') {
     const c = ((await ui.prompt('Código de tu reserva')) || '').trim().toUpperCase();
     if (c) { saveCod(kr(r), c); render(); }
   }
-  if (k === 'r' && await ui.confirm('La reserva se borrará del calendario.', '¿Liberar este horario?', 'Sí, liberar')) admin('admin_del_reserva', { i: id });
+  if (k === 'r' && await ui.confirm('La reserva se borrará del calendario.', '¿Liberar este horario?', 'Sí, liberar')) admin('admin_del_reserva', { i: id }, 'Horario liberado');
 };
 
 $('#cfg').onclick = e => {
   if (e.target.id === 'cnb') {
     const n = $('#cn').value.trim();
     if (n.length < 2) { ui.alert('El nombre debe tener al menos 2 caracteres.', 'Nombre inválido'); return; }
-    admin('admin_set_nombre', { fa: fid, n }); return;
+    admin('admin_set_nombre', { fa: fid, n }, 'Nombre guardado'); return;
   }
   if (e.target.id !== 'cg') return;
   const ab = $('#ca').dataset.v, ci = $('#cc').dataset.v;
   if (ci <= ab) { ui.alert('La hora de cierre debe ser después de la de apertura.', 'Horario inválido'); return; }
-  admin('admin_set_horario', { fa: fid, ab, ci, st: +$('#cp').dataset.v });
+  admin('admin_set_horario', { fa: fid, ab, ci, st: +$('#cp').dataset.v }, 'Horario guardado');
 };
 
 $('#fm').onsubmit = async e => {
@@ -367,7 +379,7 @@ $('#fm').onsubmit = async e => {
   if (ed) {
     const id = ed, r = R.find(z => z.id === id); ed = null;
     $('#dlg').close();
-    await labRpc('lab_edit_reserva', { c: miCod(kr(r)), i: id, l: lab, pr: prod }, kr(r), () => { r.laboratorio = lab; r.producto = prod; });
+    await labRpc('lab_edit_reserva', { c: miCod(kr(r)), i: id, l: lab, pr: prod }, kr(r), () => { r.laboratorio = lab; r.producto = prod; }, 'Reserva corregida');
     return;
   }
   const i = $('#t1').dataset.v, f2 = $('#t2').dataset.v, c = newCod();
