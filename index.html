@@ -21,12 +21,13 @@ header button{border-color:#fff}
   header{display:grid;grid-template-columns:1fr auto 1fr}
   header .row{display:contents}
   #fs{justify-self:center}
-  #adm{justify-self:end}
+  .hr{justify-self:end}
   #fs.dd.r ul{left:50%;right:auto;transform:translateX(-50%)}
 }
 footer{max-width:900px;margin:0 auto;padding:8px 16px 24px;text-align:center;font-size:12px;color:#777}
 footer a{color:inherit;text-decoration:underline}
 footer a:hover,footer a:focus-visible{color:var(--r)}
+.hr{display:flex;gap:6px;flex-wrap:wrap}
 button:focus-visible,input:focus-visible{outline:3px solid var(--rd);outline-offset:2px}
 main{max-width:900px;margin:0 auto;padding:16px}
 .bar{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
@@ -77,6 +78,12 @@ dialog input{width:100%;margin:6px 0}
 #mb .row{justify-content:center}
 #mc{font:700 28px/1 ui-monospace,monospace;letter-spacing:.2em;background:var(--warn);border:1px dashed var(--r);border-radius:10px;padding:14px;margin:0 0 12px;color:var(--rd);user-select:all}
 #cpa{margin-left:auto}
+#ay{width:400px}
+#ay h3{margin:0 0 8px;color:var(--rd)}
+#ay ol{margin:0 0 12px;padding-left:20px}
+#ay li{margin:0 0 8px}
+#ay .n{margin:0 0 12px;font-size:13px;color:#666}
+#ay .row{justify-content:flex-end}
 #pp{width:520px;max-width:92vw}
 #pp h3{margin:0 0 4px;color:var(--rd)}
 #pp .n{margin:0 0 10px;font-size:13px;color:#666}
@@ -92,7 +99,7 @@ dialog input{width:100%;margin:6px 0}
   <h1>Días de producto · Más por Menos</h1>
   <div class="row">
     <div id="fs" class="r"></div>
-    <button id="adm">Admin</button>
+    <span class="hr"><button id="ayb">¿Cómo funciona?</button><button id="adm">Admin</button></span>
   </div>
 </header>
 <main>
@@ -142,6 +149,18 @@ dialog input{width:100%;margin:6px 0}
   <p class="n">Lo que se borra se guarda 90 días y luego se elimina definitivamente.</p>
   <div id="pl"></div>
   <div class="row" style="margin-top:12px;justify-content:space-between"><button class="d" id="pv">Vaciar papelera</button><button id="px">Cerrar</button></div>
+</dialog>
+
+<dialog id="ay">
+  <h3>¿Cómo funciona?</h3>
+  <ol>
+    <li><b>Elige la farmacia</b> en el menú de arriba.</li>
+    <li><b>Toca un día</b> del calendario. En verde está libre; en rosado ya hay reservas.</li>
+    <li><b>Toca "Apartar"</b> en un horario libre, elige desde y hasta qué hora, y escribe tu laboratorio y producto.</li>
+    <li><b>Guarda tu código.</b> Con él puedes corregir o cancelar tu reserva. Si entras desde otro celular, usa "Tengo código".</li>
+  </ol>
+  <p class="n">No hay que descargar ni enviar nada: el sistema no deja que dos laboratorios se crucen en el mismo horario.</p>
+  <div class="row"><button class="p" id="ayx" autofocus>Entendido</button></div>
 </dialog>
 
 <div id="sn" role="status" aria-live="polite"></div>
@@ -494,6 +513,8 @@ $('#fm').onsubmit = async e => {
   load();
 };
 $('#cx').onclick = () => { ed = null; $('#dlg').close(); };
+$('#ayb').onclick = () => $('#ay').showModal();
+$('#ayx').onclick = () => $('#ay').close();
 
 $('#prev').onclick = () => { m--; if (m < 0) { m = 11; y--; } day = null; load(); };
 $('#next').onclick = () => { m++; if (m > 11) { m = 0; y++; } day = null; load(); };
