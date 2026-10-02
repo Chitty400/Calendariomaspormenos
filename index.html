@@ -233,13 +233,13 @@ const newCod = () => {
   return [...v].map(x => a[x % a.length]).join('');
 };
 
-async function load() {
+async function load(quiet) {
   const ini = iso(y, m, 1), fin = m === 11 ? iso(y + 1, 0, 1) : iso(y, m + 1, 1);
   const [a, c] = await Promise.all([
     sb.from('farmacias').select('*').order('id'),
     sb.from('reservas').select('*').gte('fecha', ini).lt('fecha', fin)
   ]);
-  if (a.error || c.error) { ui.alert('Revisa SB_URL y SB_KEY.', 'No se pudo conectar con la base de datos'); return; }
+  if (a.error || c.error) { if (!quiet) ui.alert('Revisa SB_URL y SB_KEY.', 'No se pudo conectar con la base de datos'); return; }
   F = a.data; R = c.data;
   if (!F.some(f => f.id == fid)) { fid = F[0]?.id; day = null; }
   render();
@@ -464,16 +464,19 @@ $('#pdfA').onclick = () => pdf(true);
 
 load();
 
-let t, poll;
-const reload = () => { clearTimeout(t); t = setTimeout(load, 300); };
+let t;
+const reload = () => { clearTimeout(t); t = setTimeout(() => load(true), 300); };
 sb.channel('calendario-live')
   .on('postgres_changes', { event: '*', schema: 'public', table: 'reservas' }, reload)
   .on('postgres_changes', { event: '*', schema: 'public', table: 'farmacias' }, reload)
-  .subscribe(s => {
-    clearInterval(poll);
-    if (s !== 'SUBSCRIBED') poll = setInterval(load, 15000);
-  });
-document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+  .subscribe();
+// Respaldo para celulares: recargar cada 30 s mientras la página está visible,
+// y al volver a la pestaña, recuperar internet o salir del modo de espera
+setInterval(() => { if (!document.hidden) reload(); }, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) reload(); });
+addEventListener('focus', reload);
+addEventListener('online', reload);
+addEventListener('pageshow', e => { if (e.persisted) reload(); });
 </script>
 </body>
 </html>
