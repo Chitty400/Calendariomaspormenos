@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Días de Producto · Más por Menos</title>
-<link rel="icon" href="logo.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27%3E%3Ctext y=%27.9em%27 font-size=%2790%27%3E%F0%9F%92%8A%3C/text%3E%3C/svg%3E">
 <style>
 :root{--r:#c8102e;--rd:#9d0c24;--bg:#fff;--ink:#222;--ln:#e8dede;--ok:#e9f6ea;--okt:#2e7d32;--warn:#fff1f1;--full:#fbd9dd}
 *{box-sizing:border-box}
@@ -286,7 +286,7 @@ function renderCfg() {
     <b style="display:block;margin-top:10px">Horario</b>
     <div class="row" style="margin-top:6px">Abre <div id="ca"></div> Cierra <div id="cc"></div> Reservas cada <div id="cp"></div>
     <button class="p" id="cg">Guardar horario</button></div>
-    <div class="row" style="margin-top:10px"><input id="cnew" placeholder="Nombre de la nueva farmacia" maxlength="60" aria-label="Nombre de la nueva farmacia" style="flex:1;min-width:160px">
+    <div class="row" style="margin-top:10px">
     <button class="p" id="cad">Agregar farmacia</button><button class="d" id="cdel">Eliminar esta farmacia</button></div>`;
   const T = Array.from({ length: 48 }, (_, n) => ({ v: ts(n * 30), t: h12(n * 30) }));
   dd($('#ca'), T, hh(f.hora_apertura), null, 'Hora de apertura');
@@ -395,7 +395,8 @@ $('#cfg').onclick = async e => {
     admin('admin_set_nombre', { fa: fid, n }, 'Nombre guardado'); return;
   }
   if (e.target.id === 'cad') {
-    const n = $('#cnew').value.trim();
+    const n = ((await ui.prompt('Nombre de la nueva farmacia')) || '').trim().slice(0, 60);
+    if (!n) return;
     if (n.length < 2) { ui.alert('El nombre debe tener al menos 2 caracteres.', 'Nombre inválido'); return; }
     const id = await admin('admin_add_farmacia', { n }, 'Farmacia agregada');
     if (id) { fid = id; day = null; render(); }
