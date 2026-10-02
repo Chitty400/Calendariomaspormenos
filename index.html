@@ -131,10 +131,12 @@ const ts = n => pad(Math.floor(n / 60)) + ':' + pad(n % 60);
 // Formato 12 horas: acepta minutos (480) o texto ("08:00" / "08:00:00")
 const h12 = t => { const n = typeof t === 'number' ? t : mins(t), h = Math.floor(n / 60) % 24; return `${h % 12 || 12}:${pad(n % 60)} ${h < 12 ? 'AM' : 'PM'}`; };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fechaTxt = d => { const [a, b, c] = d.split('-'); return `${DIAS[new Date(+a, +b - 1, +c).getDay()]} ${c}/${b}/${a}`; };
+const compartir = (f, d, i, e, lab, prod, code) => `Mi reserva en Días de producto · Más por Menos\nFarmacia: ${f}\nDía: ${fechaTxt(d)}\nHorario: ${h12(i)} a ${h12(e)}\nLaboratorio: ${lab}${prod ? '\nProducto: ' + prod : ''}\nCódigo para corregir o cancelar: ${code}`;
 const hoy = () => { const t = new Date(); return iso(t.getFullYear(), t.getMonth(), t.getDate()); };
 
 // Ventanas emergentes propias (reemplazan alert, confirm y prompt)
-function msg({ title = '', text = '', code = '', input = '', ok = 'Aceptar', cancel = false }) {
+function msg({ title = '', text = '', code = '', share = '', input = '', ok = 'Aceptar', cancel = false }) {
   return new Promise(res => {
     const d = $('#mb'), i = $('#mi');
     $('#mt').textContent = title; $('#mm').textContent = text; $('#mc').textContent = code;
@@ -144,7 +146,7 @@ function msg({ title = '', text = '', code = '', input = '', ok = 'Aceptar', can
       catch { const r = document.createRange(); r.selectNodeContents($('#mc')); const g = getSelection(); g.removeAllRanges(); g.addRange(r); try { document.execCommand('copy'); } catch { } }
       cp.textContent = '¡Copiado!';
     };
-    wa.onclick = () => window.open('https://wa.me/?text=' + encodeURIComponent('Mi código de reserva en Días de producto · Más por Menos: ' + code), '_blank');
+    wa.onclick = () => window.open('https://wa.me/?text=' + encodeURIComponent(share || ('Mi código de reserva en Días de producto · Más por Menos: ' + code)), '_blank');
     i.hidden = !input; i.value = ''; i.type = input === 'password' ? 'password' : 'text';
     $('#mok').textContent = ok; $('#mno').hidden = !cancel;
     const done = v => { d.oncancel = null; $('#mf').onsubmit = null; $('#mno').onclick = null; if (d.open) d.close(); res(v); };
@@ -155,7 +157,7 @@ function msg({ title = '', text = '', code = '', input = '', ok = 'Aceptar', can
   });
 }
 const ui = {
-  alert: (text, title = 'Aviso', code = '') => msg({ title, text, code }),
+  alert: (text, title = 'Aviso', code = '', share = '') => msg({ title, text, code, share }),
   confirm: (text, title = '¿Confirmar?', ok = 'Aceptar') => msg({ title, text, ok, cancel: true }),
   prompt: (title, kind = 'text') => msg({ title, input: kind, cancel: true })
 };
@@ -365,7 +367,7 @@ $('#day').onclick = async e => {
   const x = e.target.dataset.x; if (!x) return;
   const k = x[0], id = +x.slice(1), r = R.find(z => z.id === id);
   if (k === 'a') openApartar(segs(day)[id]);
-  if (k === 'v' && r) ui.alert('Guárdalo para poder corregir o cancelar desde otro celular o navegador.', 'Tu código de reserva', miCod(kr(r)));
+  if (k === 'v' && r) ui.alert('Guárdalo para poder corregir o cancelar desde otro celular o navegador.', 'Tu código de reserva', miCod(kr(r)), compartir(fa().nombre, r.fecha, r.hora_inicio, r.hora_fin, r.laboratorio, r.producto, miCod(kr(r))));
   if (k === 'e') {
     if (!r) return;
     const rr = R.filter(z => z.farmacia_id == fid && z.fecha == day).sort((a, b) => mins(a.hora_inicio) - mins(b.hora_inicio));
@@ -436,7 +438,7 @@ $('#fm').onsubmit = async e => {
     R.push({ id: -1, farmacia_id: fid, fecha: day, hora_inicio: i, hora_fin: f2, laboratorio: lab, producto: prod });
     render();
     try { localStorage.setItem('lab', lab); } catch { }
-    ui.alert(`Reservado de ${h12(i)} a ${h12(f2)}.\nEste es tu código para corregir o cancelar. Guárdalo.`, '¡Reservado!', c);
+    ui.alert(`Reservado de ${h12(i)} a ${h12(f2)}.\nEste es tu código para corregir o cancelar. Guárdalo.`, '¡Reservado!', c, compartir(fa().nombre, day, i, f2, lab, prod, c));
   }
   load();
 };
