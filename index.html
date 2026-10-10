@@ -336,8 +336,8 @@ function render() {
 function renderCfg() {
   const el = $('#cfg'); el.hidden = !pin;
   if (!pin || !fa()) { el.dataset.sg = ''; return; }
-  const f = fa(), L = lim || { rol: 'normal', cuota: 0, usadas: 0 }, rest = Math.max(0, L.cuota - L.usadas), sup = L.rol === 'super', blq = !sup && rest <= 0 ? ' disabled' : '';
-  const sg = [f.id, f.nombre, f.hora_apertura, f.hora_cierre, f.paso_min, L.rol, L.cuota, L.usadas].join('|');
+  const f = fa(), L = lim || { rol: 'normal', cuota: 1 }, n = F.length, sup = L.rol === 'super', blq = !sup && n >= L.cuota ? ' disabled' : '';
+  const sg = [f.id, f.nombre, f.hora_apertura, f.hora_cierre, f.paso_min, L.rol, L.cuota, n].join('|');
   if (el.dataset.sg === sg) return; // no pisar lo que el admin está eligiendo
   el.dataset.sg = sg;
   el.innerHTML = `<div class="row"><b>Nombre</b><input id="cn" value="${esc(f.nombre)}" maxlength="60" aria-label="Nombre de la farmacia" style="flex:1;min-width:160px"><button class="p" id="cnb">Guardar nombre</button></div>
@@ -345,11 +345,11 @@ function renderCfg() {
     <div class="row" style="margin-top:6px">Abre <div id="ca"></div> Cierra <div id="cc"></div> Reservas cada <div id="cp"></div>
     <button class="p" id="cg">Guardar horario</button></div>
     <div class="row" style="margin-top:10px">
-    <button class="p" id="cad"${blq}>Agregar farmacia</button><button class="d" id="cdel"${blq}>Eliminar esta farmacia</button><button id="cpa">Papelera</button></div>
+    <button class="p" id="cad"${blq}>Agregar farmacia</button><button class="d" id="cdel">Eliminar esta farmacia</button><button id="cpa">Papelera</button></div>
     ${sup
-      ? `<div class="row" style="margin-top:10px"><b>Admin principal</b><span class="lim">Cambios de farmacias del admin normal: ${L.usadas} de ${L.cuota} usados</span></div>
-    <div class="row" style="margin-top:6px">Límite <input id="cq" type="number" min="0" max="999" value="${L.cuota}" style="width:90px" aria-label="Límite de cambios de farmacias"><button class="p" id="cqs">Guardar límite</button><button id="cqr">Reiniciar contador</button></div>`
-      : `<div class="lim" style="margin-top:8px">Cambios de farmacias disponibles (agregar o eliminar): ${rest} de ${L.cuota}</div>`}`;
+      ? `<div class="row" style="margin-top:10px"><b>Admin principal</b><span class="lim">Farmacias: ${n} · el admin normal puede tener hasta ${L.cuota}</span></div>
+    <div class="row" style="margin-top:6px">Máximo de farmacias para el admin normal <input id="cq" type="number" min="1" max="999" value="${L.cuota}" style="width:90px" aria-label="Máximo de farmacias para el admin normal"><button class="p" id="cqs">Guardar máximo</button></div>`
+      : `<div class="lim" style="margin-top:8px">Farmacias: ${n} de ${L.cuota} permitidas</div>`}`;
   const T = Array.from({ length: 48 }, (_, n) => ({ v: ts(n * 30), t: h12(n * 30) }));
   dd($('#ca'), T, hh(f.hora_apertura), null, 'Hora de apertura');
   dd($('#cc'), T, hh(f.hora_cierre), null, 'Hora de cierre');
@@ -493,10 +493,10 @@ $('#cfg').onclick = async e => {
     }
     return;
   }
-  if (e.target.id === 'cqs' || e.target.id === 'cqr') {
-    const c = e.target.id === 'cqs' ? parseInt($('#cq').value, 10) : lim.cuota;
-    if (!Number.isInteger(c) || c < 0 || c > 999) { ui.alert('Escribe un número entre 0 y 999.', 'Límite inválido'); return; }
-    admin('admin_set_limite', { c, r: e.target.id === 'cqr' }, e.target.id === 'cqr' ? 'Contador reiniciado' : 'Límite guardado');
+  if (e.target.id === 'cqs') {
+    const c = parseInt($('#cq').value, 10);
+    if (!Number.isInteger(c) || c < 1 || c > 999) { ui.alert('Escribe un número entre 1 y 999.', 'Máximo inválido'); return; }
+    admin('admin_set_limite', { c }, 'Máximo guardado');
     return;
   }
   if (e.target.id !== 'cg') return;
