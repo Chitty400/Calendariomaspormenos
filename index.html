@@ -349,7 +349,7 @@ function renderCfg() {
     ${sup
       ? `<div class="row" style="margin-top:10px"><b>Admin principal</b><span class="lim">Farmacias: ${n} · el admin normal puede tener hasta ${L.cuota}</span></div>
     <div class="row" style="margin-top:6px">Máximo de farmacias para el admin normal <input id="cq" type="number" min="1" max="999" value="${L.cuota}" style="width:90px" aria-label="Máximo de farmacias para el admin normal"><button class="p" id="cqs">Guardar máximo</button></div>`
-      : `<div class="lim" style="margin-top:8px">Farmacias: ${n} de ${L.cuota} permitidas</div>`}`;
+      : `<div class="lim" style="margin-top:8px">Farmacias: ${n}/${L.cuota}</div>`}`;
   const T = Array.from({ length: 48 }, (_, n) => ({ v: ts(n * 30), t: h12(n * 30) }));
   dd($('#ca'), T, hh(f.hora_apertura), null, 'Hora de apertura');
   dd($('#cc'), T, hh(f.hora_cierre), null, 'Hora de cierre');
