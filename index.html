@@ -4,18 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Días de Producto · Más por Menos</title>
-<link rel="icon" href="logo.png">
+<link rel="icon" href="fulllogo.jpg">
 <style>
-:root{--r:#c8102e;--rd:#9d0c24;--bg:#fff;--ink:#222;--ln:#e8dede;--ok:#e9f6ea;--okt:#2e7d32;--warn:#fff1f1;--full:#fbd9dd}
+:root{--r:#1565a8;--rd:#0b3d7a;--g:#5fae2e;--bg:#fff;--ink:#222;--ln:#d6e0ea;--ok:#e6f4dc;--okt:#4a9d1f;--warn:#e6f0fa;--full:#bcd6ee}
 *{box-sizing:border-box}
 body{margin:0;font:15px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
-header{background:var(--r);color:#fff;padding:12px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+header{background:linear-gradient(90deg,var(--rd),var(--r));border-bottom:4px solid var(--g);color:#fff;padding:12px 16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
 h1{font-size:18px;margin:0}
 button,input{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--ln)}
 button{cursor:pointer;background:#fff;color:var(--r);border-color:var(--r);font-weight:600}
 button.p{background:var(--r);color:#fff}
 button.d{background:var(--rd);color:#fff;border-color:var(--rd)}
 header button{border-color:#fff}
+button:disabled{opacity:.5;cursor:not-allowed}
+.lim{font-size:13px;color:#555}
 /* En pantallas de PC: título a la izquierda, farmacia al centro, Admin a la derecha */
 @media (min-width:700px){
   header{display:grid;grid-template-columns:1fr auto 1fr}
@@ -173,6 +175,7 @@ const SB_KEY = 'sb_publishable_uZITUaJiJUAZKQVBzGnusw_VMFp72b2';
 const sb = supabase.createClient(SB_URL, SB_KEY);
 
 const $ = s => document.querySelector(s);
+const el_reset = () => { const c = $('#cfg'); if (c) c.dataset.sg = ''; };
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 const pad = n => String(n).padStart(2, '0');
@@ -264,7 +267,7 @@ document.addEventListener('keydown', e => {
   } else if ((e.key === 'Enter' || e.key === ' ') && e.target.tagName === 'LI') { e.preventDefault(); e.target.click(); }
 });
 
-let F = [], R = [], fid = null, day = null, pin = null, gap = null, ed = null;
+let F = [], R = [], fid = null, day = null, pin = null, rol = null, lim = null, gap = null, ed = null;
 let y = new Date().getFullYear(), m = new Date().getMonth();
 const fa = () => F.find(f => f.id == fid);
 
@@ -333,7 +336,8 @@ function render() {
 function renderCfg() {
   const el = $('#cfg'); el.hidden = !pin;
   if (!pin || !fa()) { el.dataset.sg = ''; return; }
-  const f = fa(), sg = [f.id, f.nombre, f.hora_apertura, f.hora_cierre, f.paso_min].join('|');
+  const f = fa(), L = lim || { rol: 'normal', cuota: 0, usadas: 0 }, rest = Math.max(0, L.cuota - L.usadas), sup = L.rol === 'super', blq = !sup && rest <= 0 ? ' disabled' : '';
+  const sg = [f.id, f.nombre, f.hora_apertura, f.hora_cierre, f.paso_min, L.rol, L.cuota, L.usadas].join('|');
   if (el.dataset.sg === sg) return; // no pisar lo que el admin está eligiendo
   el.dataset.sg = sg;
   el.innerHTML = `<div class="row"><b>Nombre</b><input id="cn" value="${esc(f.nombre)}" maxlength="60" aria-label="Nombre de la farmacia" style="flex:1;min-width:160px"><button class="p" id="cnb">Guardar nombre</button></div>
@@ -341,7 +345,11 @@ function renderCfg() {
     <div class="row" style="margin-top:6px">Abre <div id="ca"></div> Cierra <div id="cc"></div> Reservas cada <div id="cp"></div>
     <button class="p" id="cg">Guardar horario</button></div>
     <div class="row" style="margin-top:10px">
-    <button class="p" id="cad">Agregar farmacia</button><button class="d" id="cdel">Eliminar esta farmacia</button><button id="cpa">Papelera</button></div>`;
+    <button class="p" id="cad"${blq}>Agregar farmacia</button><button class="d" id="cdel"${blq}>Eliminar esta farmacia</button><button id="cpa">Papelera</button></div>
+    ${sup
+      ? `<div class="row" style="margin-top:10px"><b>Admin principal</b><span class="lim">Cambios de farmacias del admin normal: ${L.usadas} de ${L.cuota} usados</span></div>
+    <div class="row" style="margin-top:6px">Límite <input id="cq" type="number" min="0" max="999" value="${L.cuota}" style="width:90px" aria-label="Límite de cambios de farmacias"><button class="p" id="cqs">Guardar límite</button><button id="cqr">Reiniciar contador</button></div>`
+      : `<div class="lim" style="margin-top:8px">Cambios de farmacias disponibles (agregar o eliminar): ${rest} de ${L.cuota}</div>`}`;
   const T = Array.from({ length: 48 }, (_, n) => ({ v: ts(n * 30), t: h12(n * 30) }));
   dd($('#ca'), T, hh(f.hora_apertura), null, 'Hora de apertura');
   dd($('#cc'), T, hh(f.hora_cierre), null, 'Hora de cierre');
@@ -395,11 +403,18 @@ function renderDay() {
     }).join('');
 }
 
+async function limite() {
+  if (!pin) { lim = null; rol = null; return; }
+  const { data } = await sb.rpc('admin_limite', { p: pin });
+  lim = data || null; rol = lim ? lim.rol : null;
+}
+
 async function admin(fn, args, ok, apply) {
   const { data, error } = await sb.rpc(fn, { p: pin, ...args });
   if (error) { ui.alert(error.message, 'No se pudo completar'); if (/PIN/.test(error.message)) pin = null; }
   else { if (apply) { apply(); render(); } if (ok) snack(ok); }
   await load();
+  await limite(); render();
   return error ? null : data;
 }
 
@@ -478,6 +493,12 @@ $('#cfg').onclick = async e => {
     }
     return;
   }
+  if (e.target.id === 'cqs' || e.target.id === 'cqr') {
+    const c = e.target.id === 'cqs' ? parseInt($('#cq').value, 10) : lim.cuota;
+    if (!Number.isInteger(c) || c < 0 || c > 999) { ui.alert('Escribe un número entre 0 y 999.', 'Límite inválido'); return; }
+    admin('admin_set_limite', { c, r: e.target.id === 'cqr' }, e.target.id === 'cqr' ? 'Contador reiniciado' : 'Límite guardado');
+    return;
+  }
   if (e.target.id !== 'cg') return;
   const ab = $('#ca').dataset.v, ci = $('#cc').dataset.v;
   if (ci <= ab) { ui.alert('La hora de cierre debe ser después de la de apertura.', 'Horario inválido'); return; }
@@ -523,11 +544,11 @@ $('#prev').onclick = () => { m--; if (m < 0) { m = 11; y--; } day = null; load()
 $('#next').onclick = () => { m++; if (m > 11) { m = 0; y++; } day = null; load(); };
 
 $('#adm').onclick = async () => {
-  if (pin) { pin = null; render(); return; }
+  if (pin) { pin = null; rol = null; lim = null; el_reset(); render(); return; }
   const p = await ui.prompt('PIN de administrador', 'password');
   if (!p) return;
   const { data, error } = await sb.rpc('admin_ok', { p });
-  if (data === true) { pin = p; render(); }
+  if (data === true) { pin = p; await limite(); render(); }
   else if (error) ui.alert(error.message, 'Acceso bloqueado');
   else ui.alert('Intenta de nuevo.', 'PIN incorrecto');
 };
@@ -555,7 +576,7 @@ $('#pl').onclick = async e => {
   const id = e.target.dataset.r; if (!id) return;
   const { error } = await sb.rpc('admin_restaurar', { p: pin, i: +id });
   if (error) { ui.alert(error.message, 'No se pudo restaurar'); return; }
-  snack('Restaurado'); load(); abrePapelera();
+  snack('Restaurado'); load(); await limite(); render(); abrePapelera();
 };
 $('#pv').onclick = async () => {
   if (!await ui.confirm('Se borrará todo lo que hay en la papelera. No se puede deshacer.', '¿Vaciar la papelera?', 'Sí, vaciar')) return;
@@ -579,7 +600,7 @@ async function pdf(all) {
   const list = all ? F : F.filter(f => f.id == fid), n = new Date(y, m + 1, 0).getDate();
   list.forEach((f, k) => {
     if (k) doc.addPage();
-    doc.setFontSize(15); doc.setTextColor(200, 16, 46);
+    doc.setFontSize(15); doc.setTextColor(21, 101, 168);
     doc.text(`${f.nombre} · Días de producto · ${MESES[m]} ${y}`, 14, 14);
     doc.setFontSize(9); doc.setTextColor(90);
     doc.text(`Horario de atención: ${h12(f.hora_apertura)} a ${h12(f.hora_cierre)}`, 14, 19);
@@ -593,7 +614,7 @@ async function pdf(all) {
     doc.autoTable({
       startY: 23, theme: 'grid', styles: { fontSize: 8, cellPadding: 1.5 },
       head: [['Día', 'Horario', 'Laboratorio', 'Producto']], body,
-      headStyles: { fillColor: [200, 16, 46] },
+      headStyles: { fillColor: [21, 101, 168] },
       didParseCell: h => { if (h.section === 'body' && h.cell.raw === 'Disponible todo el día') h.cell.styles.textColor = [150, 150, 150]; }
     });
   });
